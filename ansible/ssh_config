@@ -1,0 +1,65 @@
+Host balanceador
+  HostName 127.0.0.1
+  User vagrant
+  Port 2222
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/balanceador/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host web1
+  HostName 127.0.0.1
+  User vagrant
+  Port 2200
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/web1/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host web2
+  HostName 127.0.0.1
+  User vagrant
+  Port 2201
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/web2/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host web3
+  HostName 127.0.0.1
+  User vagrant
+  Port 2202
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/web3/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host datos
+  HostName 127.0.0.1
+  User vagrant
+  Port 2203
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/datos/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
