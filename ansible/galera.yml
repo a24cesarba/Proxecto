@@ -1,0 +1,74 @@
+---
+- name: Desplegar Clúster MariaDB Galera
+  hosts: dbs
+  become: yes
+  vars:
+    # Ajustado para tus 2GB de RAM por máquina
+    mysql_innodb_buffer_pool: "768M"
+    cluster_ips: "10.0.0.31,10.0.0.32,10.0.0.33"
+
+  tasks:
+  
+
+  
+    - name: Instalar MariaDB Server y dependencias de Galera
+      ansible.builtin.apt:
+        name: 
+          - mariadb-server
+          - galera-4
+          - rsync
+        state: present
+        update_cache: yes
+
+
+
+
+    - name: Crear archivo de configuración de Galera
+      ansible.builtin.blockinfile:
+        path: /etc/mysql/mariadb.conf.d/60-galera.cnf
+        create: yes
+        mode: '0644'
+        block: |
+          [mysqld]
+          binlog_format=ROW
+          default-storage-engine=InnoDB
+          innodb_autoinc_lock_mode=2
+          innodb_buffer_pool_size={{ mysql_innodb_buffer_pool }}
+
+          # Configuración del proveedor Galera
+          wsrep_on=ON
+          wsrep_provider=/usr/lib/galera/libgalera_smm.so
+
+          # Configuración del Clúster
+          wsrep_cluster_name="galera_labs"
+          wsrep_cluster_address="gcomm://{{ cluster_ips }}"
+
+          # Configuración específica del Nodo
+          wsrep_node_address="{{ ansible_facts['all_ipv4_addresses'] | select('match', '^10\\.0\\.') | first }}"
+          wsrep_node_name="{{ inventory_hostname }}"
+          wsrep_sst_method=rsync
+
+    # -----------------------------------------------------------------
+    # 3. EL ARRANQUE DEL CLÚSTER (Bootstrap controlado)
+    # -----------------------------------------------------------------
+    - name: Detener servicio MariaDB en todos los nodos para aplicar cambios
+      ansible.builtin.systemd:
+        name: mariadb
+        state: stopped
+
+    - name: Inicializar el nuevo clúster (Bootstrap) ÚNICAMENTE en db1
+      ansible.builtin.command: galera_new_cluster
+      when: inventory_hostname == 'db1'
+      register: bootstrap_result
+
+    - name: Arrancar MariaDB de forma normal en db2 y db3 (Se unen a db1)
+      ansible.builtin.systemd:
+        name: mariadb
+        state: started
+      when: inventory_hostname != 'web1' and inventory_hostname in groups['dbs'] and inventory_hostname != 'db1'
+
+    - name: Asegurar que MariaDB está activo y habilitado en el inicio en todo el grupo
+      ansible.builtin.systemd:
+        name: mariadb
+        state: started
+        enabled: yes

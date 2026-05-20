@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [todos]
 balanceador
 web1
@@ -24,4 +25,39 @@ datos
 
 [todos:vars]
 ansible_user=vagrant
+=======
+[todos]
+web1
+web2
+web3
+lb1
+lb2
+db1
+db2
+db3
+
+[workers]
+lb1
+lb2
+db1
+db2
+db3
+
+[webs]
+web1
+web2
+web3
+
+[balanceadores]
+lb1
+lb2
+
+[bases]
+db1
+db2
+db3
+
+[todos:vars]
+ansible_user=vagrant
+>>>>>>> 612a826 (la experiencia)
 ansible_ssh_common_args='-F ./ssh_config'

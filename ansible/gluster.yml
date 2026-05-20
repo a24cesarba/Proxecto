@@ -1,0 +1,85 @@
+---
+- name: Configurar GlusterFS Distribuido
+  hosts: webs
+  become: yes
+  vars:
+    gluster_brick: /gluster/datos_web
+    gluster_mount: /mnt/almacenamiento_compartido
+    gluster_vol: volumen_swarm
+    
+    
+
+    ips_gestion:
+      - 10.0.0.11
+      - 10.0.0.12
+      - 10.0.0.13
+
+  tasks:
+    - name: Instalar servidor GlusterFS
+      ansible.builtin.apt:
+        name: glusterfs-server
+        state: present
+        update_cache: yes
+
+    - name: Asegurar que el demonio glusterd está activo
+      ansible.builtin.systemd:
+        name: glusterd
+        state: started
+        enabled: yes
+
+    - name: Crear directorio físico (Brick)
+      ansible.builtin.file:
+        path: "{{ gluster_brick }}"
+        state: directory
+        mode: '0755'
+
+# web 1 es el jefe el que manda vaya, sin el no seria igual
+
+    - name: Unir los nodos al clúster de confianza (Peer probe)
+      ansible.builtin.command: "gluster peer probe {{ item }}"
+      loop: "{{ ips_gestion }}"
+      when: inventory_hostname == 'web1'
+      register: peer_result
+      changed_when: "'success' in peer_result.stdout and 'already in peer list' not in peer_result.stdout"
+      failed_when: "'Failed' in peer_result.stderr"
+
+    - name: Esperar 5 segundos para que los nodos se reconozcan
+      ansible.builtin.pause:
+        seconds: 5
+      when: inventory_hostname == 'web1' and peer_result.changed
+
+    - name: Crear el volumen replicado de GlusterFS
+      ansible.builtin.command: >
+        gluster volume create {{ gluster_vol }} replica 3
+        10.0.0.11:{{ gluster_brick }}
+        10.0.0.12:{{ gluster_brick }}
+        10.0.0.13:{{ gluster_brick }}
+        force
+      when: inventory_hostname == 'web1'
+      register: vol_create
+      changed_when: "'success' in vol_create.stdout"
+      # Si dice "already exists", ignoramos el error para mantener la idempotencia
+      failed_when: "'Failed' in vol_create.stderr and 'already exists' not in vol_create.stderr"
+
+    - name: Iniciar el volumen de GlusterFS
+      ansible.builtin.command: "gluster volume start {{ gluster_vol }}"
+      when: inventory_hostname == 'web1'
+      register: vol_start
+      changed_when: "'success' in vol_start.stdout"
+      failed_when: "'Failed' in vol_start.stderr and 'already started' not in vol_start.stderr"
+
+
+
+    - name: Crear directorio para el punto de montaje local
+      ansible.builtin.file:
+        path: "{{ gluster_mount }}"
+        state: directory
+        mode: '0755'
+
+    - name: Montar el volumen y añadirlo de forma permanente a /etc/fstab
+      ansible.posix.mount:
+        path: "{{ gluster_mount }}"
+        src: "localhost:/{{ gluster_vol }}"
+        fstype: glusterfs
+        opts: defaults,_netdev
+        state: mounted
