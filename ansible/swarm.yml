@@ -1,0 +1,49 @@
+---
+- name: Configurar Clúster Docker Swarm Completo
+  hosts: all
+  become: yes
+  vars:
+    swarm_leader_ip: "10.0.0.11"
+    leader_hostname: "web1"
+
+  tasks:
+    - name: Verificar el estado actual de Docker Swarm en todos los nodos
+      ansible.builtin.shell: docker info | grep "Swarm:"
+      register: swarm_check
+      changed_when: false
+
+    # --- TAREAS DEL LÍDER ---
+    - name: Inicializar Docker Swarm en el Líder
+      ansible.builtin.command: "docker swarm init --advertise-addr {{ swarm_leader_ip }}"
+      when: 
+        - inventory_hostname == leader_hostname
+        - "'Swarm: inactive' in swarm_check.stdout"
+
+    - name: Obtener token de unión para Managers
+      ansible.builtin.command: docker swarm join-token -q manager
+      register: manager_token_raw
+      when: inventory_hostname == leader_hostname
+      changed_when: false
+
+    - name: Obtener token de unión para Workers
+      ansible.builtin.command: docker swarm join-token -q worker
+      register: worker_token_raw
+      when: inventory_hostname == leader_hostname
+      changed_when: false
+
+    # --- TAREAS DE MANAGERS SECUNDARIOS ---
+    - name: Unir web2 y web3 al clúster como Managers
+      ansible.builtin.command: >
+        docker swarm join --token {{ hostvars[leader_hostname]['manager_token_raw']['stdout'] }} {{ swarm_leader_ip }}:2377
+      when:
+        - inventory_hostname in groups['webs']
+        - inventory_hostname != leader_hostname
+        - "'Swarm: inactive' in swarm_check.stdout"
+
+    # --- TAREAS DE WORKERS ---
+    - name: Unir nodos al clúster como Workers
+      ansible.builtin.command: >
+        docker swarm join --token {{ hostvars[leader_hostname]['worker_token_raw']['stdout'] }} {{ swarm_leader_ip }}:2377
+      when:
+        - inventory_hostname in groups['workers']
+        - "'Swarm: inactive' in swarm_check.stdout"

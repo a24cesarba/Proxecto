@@ -1,33 +1,12 @@
-<<<<<<< HEAD
-Host balanceador
-=======
 Host web1
->>>>>>> 612a826 (la experiencia)
   HostName 127.0.0.1
   User vagrant
   Port 2222
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-<<<<<<< HEAD
-  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/balanceador/virtualbox/private_key
-  IdentitiesOnly yes
-  LogLevel FATAL
-  PubkeyAcceptedKeyTypes +ssh-rsa
-  HostKeyAlgorithms +ssh-rsa
-
-Host web1
-  HostName 127.0.0.1
-  User vagrant
-  Port 2200
-  UserKnownHostsFile /dev/null
-  StrictHostKeyChecking no
-  PasswordAuthentication no
-  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/web1/virtualbox/private_key
-=======
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
->>>>>>> 612a826 (la experiencia)
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -36,20 +15,12 @@ Host web1
 Host web2
   HostName 127.0.0.1
   User vagrant
-<<<<<<< HEAD
-  Port 2201
-  UserKnownHostsFile /dev/null
-  StrictHostKeyChecking no
-  PasswordAuthentication no
-  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/web2/virtualbox/private_key
-=======
   Port 2200
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
->>>>>>> 612a826 (la experiencia)
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -58,39 +29,24 @@ Host web2
 Host web3
   HostName 127.0.0.1
   User vagrant
-<<<<<<< HEAD
-  Port 2202
-  UserKnownHostsFile /dev/null
-  StrictHostKeyChecking no
-  PasswordAuthentication no
-  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/web3/virtualbox/private_key
-=======
   Port 2201
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
->>>>>>> 612a826 (la experiencia)
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
   HostKeyAlgorithms +ssh-rsa
 
-<<<<<<< HEAD
-Host datos
-=======
 Host lb1
->>>>>>> 612a826 (la experiencia)
   HostName 127.0.0.1
   User vagrant
   Port 2203
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-<<<<<<< HEAD
-  IdentityFile D:/ASIR/Proxecto/.vagrant/machines/datos/virtualbox/private_key
-=======
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
   IdentitiesOnly yes
@@ -149,7 +105,6 @@ Host db3
   PasswordAuthentication no
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
   IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
->>>>>>> 612a826 (la experiencia)
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
