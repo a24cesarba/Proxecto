@@ -5,8 +5,7 @@ Host web1
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/web1/virtualbox/private_key
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -19,8 +18,7 @@ Host web2
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/web2/virtualbox/private_key
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -33,8 +31,7 @@ Host web3
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/web3/virtualbox/private_key
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -47,8 +44,7 @@ Host lb1
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/lb1/virtualbox/private_key
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -61,8 +57,7 @@ Host lb2
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/lb2/virtualbox/private_key
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -75,8 +70,7 @@ Host db1
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/db1/virtualbox/private_key
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -89,8 +83,7 @@ Host db2
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/db2/virtualbox/private_key
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa
@@ -103,8 +96,7 @@ Host db3
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.ed25519
-  IdentityFile /home/cesar/.vagrant.d/insecure_private_keys/vagrant.key.rsa
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/db3/virtualbox/private_key
   IdentitiesOnly yes
   LogLevel FATAL
   PubkeyAcceptedKeyTypes +ssh-rsa

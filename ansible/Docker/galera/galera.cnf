@@ -1,0 +1,72 @@
+# /etc/mysql/mariadb.conf.d/60-galera.cnf
+# =============================================================================
+# Static Galera configuration — baked into the image at build time.
+#
+# DO NOT put node-specific values here (node address, cluster address,
+# cluster name, SST credentials). Those are written at container startup
+# into 61-galera-runtime.cnf by entrypoint.sh, so they can vary per deploy
+# without rebuilding the image.
+# =============================================================================
+
+[mysqld]
+
+# ── Galera Provider ───────────────────────────────────────────────────────────
+wsrep_on                        = ON
+wsrep_provider                  = /usr/lib/galera/libgalera_smm.so
+
+# ── SST: State Snapshot Transfer ─────────────────────────────────────────────
+# mariabackup is non-blocking: the donor node keeps serving traffic while
+# transferring its data to the joiner. Requires mariadb-backup package.
+wsrep_sst_method                = mariabackup
+
+# ── Replication Performance ───────────────────────────────────────────────────
+# 2 applier threads is a safe starting point for 1 vCPU nodes.
+# Raise to 4 if you see replication lag under write load.
+wsrep_slave_threads             = 2
+wsrep_log_conflicts             = ON
+
+# Maximum writeset size. 2G covers large transactions (e.g. bulk imports).
+wsrep_max_ws_size               = 2G
+
+# Galera provider tuning:
+#   gcache.size    : ring buffer for IST (bigger = wider recovery window)
+#   pc.recovery    : survive PRIMARY COMPONENT restart without full SST
+#   evs timeouts   : conservative for VirtualBox (higher latency than bare metal)
+wsrep_provider_options          = "gcache.size=256M; \
+                                   pc.recovery=true; \
+                                   evs.keepalive_period=PT3S; \
+                                   evs.suspect_timeout=PT30S; \
+                                   evs.inactive_timeout=PT1M; \
+                                   evs.install_timeout=PT1M"
+
+# ── InnoDB — Required Galera Settings ────────────────────────────────────────
+# binlog_format=ROW is mandatory for Galera (statement-based breaks wsrep).
+binlog_format                   = ROW
+default_storage_engine          = InnoDB
+
+# innodb_autoinc_lock_mode=2 (interleaved) prevents auto-increment deadlocks
+# in multi-master writes. Required by Galera.
+innodb_autoinc_lock_mode        = 2
+
+# Reduce durability slightly for better performance; Galera's certification
+# protocol provides transaction consistency across the cluster.
+innodb_flush_log_at_trx_commit  = 0
+innodb_doublewrite              = 1
+
+# ── Memory Tuning — calibrated for 2 GB RAM nodes ────────────────────────────
+# Leave ~1 GB for OS, Galera gcache, SST buffers, and connections overhead.
+innodb_buffer_pool_size         = 1G
+innodb_log_file_size            = 256M
+innodb_log_buffer_size          = 64M
+
+# ── Connection Limits ─────────────────────────────────────────────────────────
+max_connections                 = 200
+table_open_cache                = 400
+
+# ── Temp Table Limits ─────────────────────────────────────────────────────────
+tmp_table_size                  = 64M
+max_heap_table_size             = 64M
+
+# ── Networking ────────────────────────────────────────────────────────────────
+# Bind to all interfaces so containers on the overlay network can connect.
+bind-address                    = 0.0.0.0

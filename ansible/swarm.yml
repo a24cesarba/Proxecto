@@ -7,15 +7,17 @@
     leader_hostname: "web1"
 
   tasks:
+
     - name: Verificar el estado actual de Docker Swarm en todos los nodos
       ansible.builtin.shell: docker info | grep "Swarm:"
       register: swarm_check
       changed_when: false
 
     # --- TAREAS DEL LÍDER ---
+
     - name: Inicializar Docker Swarm en el Líder
       ansible.builtin.command: "docker swarm init --advertise-addr {{ swarm_leader_ip }}"
-      when: 
+      when:
         - inventory_hostname == leader_hostname
         - "'Swarm: inactive' in swarm_check.stdout"
 
@@ -32,18 +34,68 @@
       changed_when: false
 
     # --- TAREAS DE MANAGERS SECUNDARIOS ---
+
     - name: Unir web2 y web3 al clúster como Managers
       ansible.builtin.command: >
-        docker swarm join --token {{ hostvars[leader_hostname]['manager_token_raw']['stdout'] }} {{ swarm_leader_ip }}:2377
+        docker swarm join
+        --token {{ hostvars[leader_hostname]['manager_token_raw']['stdout'] }}
+        {{ swarm_leader_ip }}:2377
       when:
         - inventory_hostname in groups['webs']
         - inventory_hostname != leader_hostname
         - "'Swarm: inactive' in swarm_check.stdout"
 
     # --- TAREAS DE WORKERS ---
+
     - name: Unir nodos al clúster como Workers
       ansible.builtin.command: >
-        docker swarm join --token {{ hostvars[leader_hostname]['worker_token_raw']['stdout'] }} {{ swarm_leader_ip }}:2377
+        docker swarm join
+        --token {{ hostvars[leader_hostname]['worker_token_raw']['stdout'] }}
+        {{ swarm_leader_ip }}:2377
       when:
         - inventory_hostname in groups['workers']
         - "'Swarm: inactive' in swarm_check.stdout"
+
+    # --- ETIQUETAS DE NODOS ---
+    # Las etiquetas son necesarias para que el stack file pueda restringir
+    # qué contenedores corren en qué nodos (placement constraints).
+    # Todas las operaciones de etiquetado se ejecutan desde el leader porque
+    # docker node update es un comando de gestión del clúster, no del nodo local.
+    #
+    # docker node update --label-add es idempotente: si la etiqueta ya existe
+    # con el mismo valor, no modifica nada. changed_when: false refleja esto.
+
+    - name: Etiquetar nodos balanceadores (role=lb)
+      ansible.builtin.command: "docker node update --label-add role=lb {{ item }}"
+      loop: "{{ groups['balanceadores'] }}"
+      when: inventory_hostname == leader_hostname
+      changed_when: false
+
+    - name: Etiquetar nodos de base de datos (role=db)
+      ansible.builtin.command: "docker node update --label-add role=db {{ item }}"
+      loop: "{{ groups['bases'] }}"
+      when: inventory_hostname == leader_hostname
+      changed_when: false
+
+    # db1 es el nodo que arranca el cluster Galera en el primer despliegue.
+    # El entrypoint de la imagen Galera comprueba esta etiqueta para decidir
+    # si lanzar --wsrep-new-cluster o hacer join.
+    - name: Etiquetar db1 como nodo bootstrap de Galera
+      ansible.builtin.command: "docker node update --label-add galera.bootstrap=true db1"
+      when: inventory_hostname == leader_hostname
+      changed_when: false
+
+    # Verificación final: muestra el estado del clúster y las etiquetas aplicadas.
+    # Útil para confirmar que todo quedó bien antes de desplegar el stack.
+    - name: Mostrar estado del clúster y etiquetas
+      ansible.builtin.command: >
+        docker node ls --format
+        "table {{"{{"}}  .Hostname{{"}}"}}\t{{"{{"}} .Status {{"}}"}}\t{{"{{"}} .ManagerStatus {{"}}"}}\t{{"{{"}} .Availability {{"}}"}}"
+      register: swarm_status
+      when: inventory_hostname == leader_hostname
+      changed_when: false
+
+    - name: Resultado
+      ansible.builtin.debug:
+        msg: "{{ swarm_status.stdout_lines }}"
+      when: inventory_hostname == leader_hostname

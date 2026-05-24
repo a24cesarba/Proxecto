@@ -1,0 +1,145 @@
+---
+# -----------------------------------------------------------------------------
+# PLAY 2 — Crear secretos, configs y desplegar el stack en el leader
+# Todo se ejecuta en web1 porque es el manager leader del clúster Swarm.
+# Los secretos y configs son objetos del clúster: una vez creados en web1,
+# están disponibles para todos los nodos del clúster automáticamente.
+# -----------------------------------------------------------------------------
+- name: Crear secretos, configuraciones y desplegar stack
+  hosts: web1
+  become: yes
+
+  vars_prompt:
+
+    - name: db_root_password
+      prompt: |
+
+        ============================================================
+        Contraseña root de MariaDB
+        (se usará para crear el secreto Docker 'db_root_password')
+      private: yes
+      confirm: yes
+
+    - name: db_galera_password
+      prompt: |
+
+        Contraseña SST de Galera
+        (se usará para crear el secreto Docker 'db_galera_password')
+      private: yes
+      confirm: yes
+
+  tasks:
+
+    # ── Secretos ──────────────────────────────────────────────────────────────
+    # Los secretos Docker se crean una sola vez. Si ya existen, se omite la
+    # creación. Para rotar una contraseña hay que borrar el secreto manualmente
+    # (docker secret rm <nombre>) y volver a ejecutar este playbook.
+
+    - name: Comprobar si el secreto db_root_password ya existe
+      ansible.builtin.command: docker secret inspect db_root_password
+      register: secret_root_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear secreto db_root_password
+      ansible.builtin.shell: "printf '%s' '{{ db_root_password }}' | docker secret create db_root_password -"
+      when: secret_root_check.rc != 0
+      no_log: true   # no mostrar la contraseña en los logs de Ansible
+
+    - name: Comprobar si el secreto db_galera_password ya existe
+      ansible.builtin.command: docker secret inspect db_galera_password
+      register: secret_galera_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear secreto db_galera_password
+      ansible.builtin.shell: "printf '%s' '{{ db_galera_password }}' | docker secret create db_galera_password -"
+      when: secret_galera_check.rc != 0
+      no_log: true
+
+    # ── Config de HAProxy ─────────────────────────────────────────────────────
+    # Los configs Docker funcionan igual que los secretos pero para ficheros
+    # de configuración no sensibles. haproxy.cfg se inyecta en el contenedor
+    # lb en tiempo de ejecución sin necesidad de montar volúmenes.
+
+    - name: Copiar haproxy.cfg al nodo leader
+      ansible.builtin.copy:
+        src: ./haproxy.cfg
+        dest: /tmp/haproxy.cfg
+        mode: '0644'
+
+    - name: Comprobar si el config haproxy_cfg ya existe
+      ansible.builtin.command: docker config inspect haproxy_cfg
+      register: config_haproxy_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear config haproxy_cfg
+      ansible.builtin.command: docker config create haproxy_cfg /tmp/haproxy.cfg
+      when: config_haproxy_check.rc != 0
+
+    # Si haproxy.cfg cambió y el config ya existe, hay que rotarlo.
+    # La rotación de configs Docker requiere crear uno nuevo con distinto nombre
+    # y actualizar el servicio. Esta tarea lo detecta y avisa.
+    - name: Advertir si haproxy_cfg ya existe (cambios en haproxy.cfg requieren rotación manual)
+      ansible.builtin.debug:
+        msg: >
+          AVISO: el config 'haproxy_cfg' ya existe en el clúster.
+          Si modificaste haproxy.cfg, debes rotar el config manualmente:
+            docker config create haproxy_cfg_v2 /tmp/haproxy.cfg
+            docker service update --config-rm haproxy_cfg
+              --config-add source=haproxy_cfg_v2,target=/usr/local/etc/haproxy/haproxy.cfg
+              app_lb
+      when: config_haproxy_check.rc == 0
+
+    # ── Stack file ────────────────────────────────────────────────────────────
+
+    - name: Crear directorio para ficheros del stack en el leader
+      ansible.builtin.file:
+        path: /opt/swarm-stack
+        state: directory
+        mode: '0755'
+
+    - name: Copiar docker-stack.yml al leader
+      ansible.builtin.copy:
+        src: ./docker-stack.yml
+        dest: /opt/swarm-stack/docker-stack.yml
+        mode: '0644'
+
+    # ── Despliegue ────────────────────────────────────────────────────────────
+    # docker stack deploy es idempotente: si el stack ya existe, actualiza
+    # únicamente los servicios que hayan cambiado en el yml.
+    # En el primer despliegue:
+    #   - db1 detecta datadir vacío + hostname == GALERA_BOOTSTRAP_NODE → bootstrap
+    #   - db2 y db3 esperan hasta 120s a que el puerto 4567 de app_db sea
+    #     accesible, luego hacen join
+    #   - web y lb arrancan normalmente
+
+    - name: Desplegar stack 'app'
+      ansible.builtin.command:
+        cmd: docker stack deploy -c /opt/swarm-stack/docker-stack.yml app
+      register: stack_result
+      changed_when: >
+        'Creating' in stack_result.stdout or
+        'Updating' in stack_result.stdout
+
+    - name: Resultado del despliegue
+      ansible.builtin.debug:
+        msg: "{{ stack_result.stdout_lines }}"
+
+    # Espera a que los servicios arranquen antes de mostrar el estado.
+    # Galera necesita tiempo para bootstrap + join, de ahí los 30s.
+    - name: Esperar 30 segundos a que los servicios inicialicen
+      ansible.builtin.pause:
+        seconds: 30
+
+    - name: Mostrar estado de los servicios del stack
+      ansible.builtin.command: >
+        docker stack services app
+        --format "table {{"{{"}} .Name {{"}}"}}\t{{"{{"}} .Mode {{"}}"}}\t{{"{{"}} .Replicas {{"}}"}}\t{{"{{"}} .Image {{"}}"}}"
+      register: services_status
+      changed_when: false
+
+    - name: Estado final
+      ansible.builtin.debug:
+        msg: "{{ services_status.stdout_lines }}"

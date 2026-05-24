@@ -1,0 +1,254 @@
+version: "3.8"
+ 
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+ 
+  swarm_net:
+    driver: overlay
+    attachable: true          # allows Ansible/tooling containers to attach
+    driver_opts:
+      encrypted: "true"
+ 
+  # User-facing traffic. Publish port 80/443 here.
+  frontend:
+    driver: overlay
+    attachable: false
+    driver_opts:
+      encrypted: "true"
+ 
+  # Web containers → HAProxy. Internal, never routed externally.
+  # Corresponds logically to the web-net (10.10.0.x) VirtualBox network.
+  web_lb:
+    driver: overlay
+    internal: true
+    driver_opts:
+      encrypted: "true"
+ 
+  # HAProxy → MariaDB. Internal, never routed externally.
+  # Corresponds logically to the backend-net (10.10.10.x) VirtualBox network.
+  backend:
+    driver: overlay
+    internal: true
+    driver_opts:
+      encrypted: "true"
+ 
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+secrets:
+  db_root_password:
+    external: true
+  db_galera_password:
+    external: true
+ 
+# ---------------------------------------------------------------------------
+# Configs
+# ---------------------------------------------------------------------------
+configs:
+  haproxy_cfg:
+    external: true
+ 
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+services:
+  web:
+    image: httpd:2.4
+    networks:
+      - swarm_net
+      - frontend
+      - web_lb
+    volumes:
+      - type: bind
+        source: /mnt/almacenamiento_compartido   # GlusterFS mount — Ansible playbook path
+        target: /var/www/html/uploads
+        read_only: false
+    deploy:
+      mode: replicated
+      replicas: 3
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 192M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 15s
+        failure_action: rollback
+        order: start-first      # new task healthy before old is removed
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      labels:
+        - "autoscale.enabled=true"
+        - "autoscale.min=3"
+        - "autoscale.max=9"
+        - "autoscale.metric=cpu"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/server-status?auto"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+ 
+  # -------------------------------------------------------------------------
+  # LB — HAProxy
+  #
+  # Placement: worker nodes labelled role=lb (lb1, lb2 from Vagrantfile).
+  # Bridges web_lb ↔ backend. Balances MariaDB connections round-robin
+  # across all 3 Galera nodes (all are equal writers in multi-master).
+  #
+  # Note on Keepalived: lb1 and lb2 also run Keepalived at the OS level
+  # to manage the VIP 10.10.0.200 on the web-net VirtualBox interface.
+  # That VIP is for non-Docker clients. Docker clients (web containers)
+  # use the 'app_lb' service name via Swarm DNS — no VIP needed for them.
+  # -------------------------------------------------------------------------
+  lb:
+    image: haproxy:2.8-alpine
+    networks:
+      - swarm_net
+      - web_lb
+      - backend
+    configs:
+      - source: haproxy_cfg
+        target: /usr/local/etc/haproxy/haproxy.cfg
+        mode: 0444
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.role == lb
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 60s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+ 
+  # -------------------------------------------------------------------------
+  # DB — MariaDB + Galera (custom image)
+  #
+  # Placement: mode=global constrained to role=db nodes → exactly one
+  #   container per db node, always.
+  #
+  # hostname: "{{.Node.Hostname}}" — Swarm service template. The container
+  #   hostname becomes the Swarm node name (db1, db2, db3). entrypoint.sh
+  #   uses this to identify the bootstrap node on fresh deploys.
+  #
+  # endpoint_mode: dnsrr — each task gets its own A-record. 'app_db'
+  #   resolves to all three task IPs. Required by Galera so each node
+  #   connects to real peer IPs, not a single VIP.
+  #
+  # Bootstrap logic (handled entirely by entrypoint.sh — no separate service):
+  #   Fresh deploy:
+  #     db1 (GALERA_BOOTSTRAP_NODE): starts --wsrep-new-cluster immediately
+  #     db2, db3: wait up to 120s for port 4567 on app_db, then join
+  #   Subsequent restarts:
+  #     grastate.dat determines who bootstraps (safe_to_bootstrap=1)
+  #     All other nodes join normally; IST syncs deltas, SST copies full state
+  #
+  # Update strategy: stop-first with 30s delay between nodes. Never update
+  #   two Galera nodes simultaneously — cluster loses quorum below 2/3 nodes.
+  # -------------------------------------------------------------------------
+  db:
+    image: a24cesarba/galera-mariadb:10.11   # built from galera-image/Dockerfile
+    hostname: "{{.Node.Hostname}}"
+    networks:
+      - swarm_net
+      - backend
+    secrets:
+      - db_root_password
+      - db_galera_password
+    environment:
+      # Secret file paths (read by entrypoint.sh and initdb scripts)
+      MYSQL_ROOT_PASSWORD_FILE:   /run/secrets/db_root_password
+      GALERA_SST_PASSWORD_FILE:   /run/secrets/db_galera_password
+      # Cluster identity
+      GALERA_CLUSTER_NAME:        galera_cluster
+      # gcomm://app_db resolves to all task IPs via dnsrr
+      GALERA_CLUSTER_ADDRESS:     gcomm://app_db
+      # Service name used by entrypoint to probe port 4567 on join wait
+      GALERA_CLUSTER_SERVICE:     app_db
+      # Node that starts --wsrep-new-cluster on fresh (empty datadir) deploy.
+      # Matches the hostname of db1 (set via hostname: "{{.Node.Hostname}}").
+      GALERA_BOOTSTRAP_NODE:      db1
+      # SST user created by initdb/01-sst-user.sh on first boot
+      GALERA_SST_USER:            galera_sst
+    volumes:
+      - db_data:/var/lib/mysql   # local per-node; Galera replicates state
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.labels.role == db
+      endpoint_mode: dnsrr
+      resources:
+        limits:
+          memory: 2048M
+        reservations:
+          memory: 1024M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 180s
+      update_config:
+        parallelism: 1          # one node at a time — never lose quorum
+        delay: 30s              # allow IST/SST to complete before next node
+        failure_action: rollback
+        order: stop-first       # stop old before starting new — protects quorum
+      rollback_config:
+        parallelism: 1
+        delay: 30s
+        order: stop-first
+    healthcheck:
+      # Checks MariaDB is up AND Galera is connected (wsrep_ready=ON)
+      test:
+        - "CMD-SHELL"
+        - |
+          mysql -uroot -p"$$(cat /run/secrets/db_root_password)" \
+            -e "SHOW STATUS LIKE 'wsrep_ready';" 2>/dev/null \
+            | grep -q "ON"
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 90s   # SST on first join can take time
+ 
+# ---------------------------------------------------------------------------
+# Volumes
+# db_data is local per-node. Galera handles replication — each node
+# maintains its own full copy of the data. No shared storage needed.
+# ---------------------------------------------------------------------------
+volumes:
+  db_data:
+    driver: local
