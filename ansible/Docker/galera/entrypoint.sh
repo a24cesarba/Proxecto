@@ -43,11 +43,8 @@ SST_PWD_FILE="${GALERA_SST_PASSWORD_FILE:-/run/secrets/db_galera_password}"
 [ -f "$ROOT_PWD_FILE" ] || die "Root password secret not found: $ROOT_PWD_FILE"
 [ -f "$SST_PWD_FILE"  ] || die "SST password secret not found: $SST_PWD_FILE"
 
-ROOT_PASSWORD=$(< "$ROOT_PWD_FILE")
 SST_PASSWORD=$(< "$SST_PWD_FILE")
 
-# Export so the official MariaDB entrypoint uses it during DB initialization.
-export MYSQL_ROOT_PASSWORD="$ROOT_PASSWORD"
 
 # ── Node Identity ─────────────────────────────────────────────────────────────
 # In Swarm global mode with hostname: "{{.Node.Hostname}}", the container

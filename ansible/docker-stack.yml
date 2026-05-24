@@ -96,7 +96,7 @@ services:
         - "autoscale.max=9"
         - "autoscale.metric=cpu"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/server-status?auto"]
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost/ || exit 1"] # Se usa wget porque la imagen httpd no tiene curl
       interval: 15s
       timeout: 5s
       retries: 3

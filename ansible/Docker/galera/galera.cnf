@@ -25,19 +25,11 @@ wsrep_sst_method                = mariabackup
 wsrep_slave_threads             = 2
 wsrep_log_conflicts             = ON
 
-# Maximum writeset size. 2G covers large transactions (e.g. bulk imports).
-wsrep_max_ws_size               = 2G
+# Sustituir el bloque wsrep_provider_options y wsrep_max_ws_size por esto:
 
-# Galera provider tuning:
-#   gcache.size    : ring buffer for IST (bigger = wider recovery window)
-#   pc.recovery    : survive PRIMARY COMPONENT restart without full SST
-#   evs timeouts   : conservative for VirtualBox (higher latency than bare metal)
-wsrep_provider_options          = "gcache.size=256M; \
-                                   pc.recovery=true; \
-                                   evs.keepalive_period=PT3S; \
-                                   evs.suspect_timeout=PT30S; \
-                                   evs.inactive_timeout=PT1M; \
-                                   evs.install_timeout=PT1M"
+wsrep_max_ws_size               = 2047M
+
+wsrep_provider_options          = "gcache.size=256M; pc.recovery=true; evs.keepalive_period=PT3S; evs.suspect_timeout=PT30S; evs.inactive_timeout=PT1M; evs.install_timeout=PT1M"
 
 # ── InnoDB — Required Galera Settings ────────────────────────────────────────
 # binlog_format=ROW is mandatory for Galera (statement-based breaks wsrep).

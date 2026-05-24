@@ -1,10 +1,4 @@
 ---
-# -----------------------------------------------------------------------------
-# PLAY 2 — Crear secretos, configs y desplegar el stack en el leader
-# Todo se ejecuta en web1 porque es el manager leader del clúster Swarm.
-# Los secretos y configs son objetos del clúster: una vez creados en web1,
-# están disponibles para todos los nodos del clúster automáticamente.
-# -----------------------------------------------------------------------------
 - name: Crear secretos, configuraciones y desplegar stack
   hosts: web1
   become: yes
