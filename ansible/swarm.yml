@@ -57,13 +57,6 @@
         - "'Swarm: inactive' in swarm_check.stdout"
 
     # --- ETIQUETAS DE NODOS ---
-    # Las etiquetas son necesarias para que el stack file pueda restringir
-    # qué contenedores corren en qué nodos (placement constraints).
-    # Todas las operaciones de etiquetado se ejecutan desde el leader porque
-    # docker node update es un comando de gestión del clúster, no del nodo local.
-    #
-    # docker node update --label-add es idempotente: si la etiqueta ya existe
-    # con el mismo valor, no modifica nada. changed_when: false refleja esto.
 
     - name: Etiquetar nodos balanceadores (role=lb)
       ansible.builtin.command: "docker node update --label-add role=lb {{ item }}"
@@ -84,6 +77,80 @@
       ansible.builtin.command: "docker node update --label-add galera.bootstrap=true db1"
       when: inventory_hostname == leader_hostname
       changed_when: false
+
+
+# Configuración de redes locales para poder usar macvlan en swarm
+
+    - name: Crear configuracion de red local para Frontend
+      docker_network:
+        name: frontend_config
+        driver: macvlan
+        config_only: true
+        ipam_config:
+          - subnet: 192.168.56.0/24
+        driver_options:
+          parent: eth2
+      when: inventory_hostname in groups['webs']
+
+    - name: Crear configuracion de red local para Web-LB (Webs y LBs)
+      docker_network:
+        name: web_lb_config
+        driver: macvlan
+        config_only: true
+        ipam_config:
+          - subnet: 10.10.0.0/24
+        driver_options:
+          # Usa eth3 si es un nodo web, eth2 si es un balanceador
+          parent: "{{ 'eth3' if inventory_hostname in groups['webs'] else 'eth2' }}"
+      when: inventory_hostname in groups['webs'] or inventory_hostname in groups['balanceadores']
+
+    - name: Crear configuracion de red local para Backend (LBs y Bases de Datos)
+      docker_network:
+        name: backend_config
+        driver: macvlan
+        config_only: true
+        ipam_config:
+          - subnet: 10.10.10.0/24
+        driver_options:
+          # Usa eth3 si es un balanceador, eth2 si es base de datos
+          parent: "{{ 'eth3' if inventory_hostname in groups['balanceadores'] else 'eth2' }}"
+      when: inventory_hostname in groups['balanceadores'] or inventory_hostname in groups['bases']
+
+# Creación de redes macvlan swarm desde web1(el jefe)
+
+    - name: Crear red Swarm Macvlan - Frontend
+      ansible.builtin.command: >
+        docker network create -d macvlan --scope swarm
+        --config-from frontend_config frontend
+      when: inventory_hostname == leader_hostname
+      register: net_frontend
+      failed_when: 
+        - net_frontend.rc != 0
+        - "'already exists' not in net_frontend.stderr"
+      changed_when: net_frontend.rc == 0
+
+    - name: Crear red Swarm Macvlan - Web-LB
+      ansible.builtin.command: >
+        docker network create -d macvlan --scope swarm
+        --config-from web_lb_config web_lb
+      when: inventory_hostname == leader_hostname
+      register: net_weblb
+      failed_when: 
+        - net_weblb.rc != 0
+        - "'already exists' not in net_weblb.stderr"
+      changed_when: net_weblb.rc == 0
+
+    - name: Crear red Swarm Macvlan - Backend
+      ansible.builtin.command: >
+        docker network create -d macvlan --scope swarm
+        --config-from backend_config backend
+      when: inventory_hostname == leader_hostname
+      register: net_backend
+      failed_when: 
+        - net_backend.rc != 0
+        - "'already exists' not in net_backend.stderr"
+      changed_when: net_backend.rc == 0
+
 
     # Verificación final: muestra el estado del clúster y las etiquetas aplicadas.
     # Útil para confirmar que todo quedó bien antes de desplegar el stack.

@@ -1,35 +1,21 @@
 version: "3.8"
 
 networks:
- 
   swarm_net:
     driver: overlay
-    attachable: true          # allows Ansible/tooling containers to attach
+    attachable: true
     driver_opts:
       encrypted: "true"
  
-  # User-facing traffic. Publish port 80/443 here.
+  # Estas redes ahora son macvlan creadas previamente usando ansible
   frontend:
-    driver: overlay
-    attachable: false
-    driver_opts:
-      encrypted: "true"
+    external: true
  
-  # Web containers → HAProxy. Internal, never routed externally.
-  # Corresponds logically to the web-net (10.10.0.x) VirtualBox network.
   web_lb:
-    driver: overlay
-    internal: true
-    driver_opts:
-      encrypted: "true"
+    external: true
  
-  # HAProxy → MariaDB. Internal, never routed externally.
-  # Corresponds logically to the backend-net (10.10.10.x) VirtualBox network.
   backend:
-    driver: overlay
-    internal: true
-    driver_opts:
-      encrypted: "true"
+    external: true
  
 # ---------------------------------------------------------------------------
 # Secrets

@@ -33,7 +33,7 @@
         state: directory
         mode: '0755'
 
-# web 1 es el jefe el que manda vaya, sin el no seria igual
+# web 1 es el jefe, el que manda vaya, sin el no seria igual
 
     - name: Unir los nodos al clúster de confianza (Peer probe)
       ansible.builtin.command: "gluster peer probe {{ item }}"
