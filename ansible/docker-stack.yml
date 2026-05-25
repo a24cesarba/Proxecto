@@ -1,8 +1,5 @@
 version: "3.8"
- 
-# ---------------------------------------------------------------------------
-# Networks
-# ---------------------------------------------------------------------------
+
 networks:
  
   swarm_net:
@@ -95,25 +92,6 @@ services:
         - "autoscale.min=3"
         - "autoscale.max=9"
         - "autoscale.metric=cpu"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost/ || exit 1"] # Se usa wget porque la imagen httpd no tiene curl
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
- 
-  # -------------------------------------------------------------------------
-  # LB — HAProxy
-  #
-  # Placement: worker nodes labelled role=lb (lb1, lb2 from Vagrantfile).
-  # Bridges web_lb ↔ backend. Balances MariaDB connections round-robin
-  # across all 3 Galera nodes (all are equal writers in multi-master).
-  #
-  # Note on Keepalived: lb1 and lb2 also run Keepalived at the OS level
-  # to manage the VIP 10.10.0.200 on the web-net VirtualBox interface.
-  # That VIP is for non-Docker clients. Docker clients (web containers)
-  # use the 'app_lb' service name via Swarm DNS — no VIP needed for them.
-  # -------------------------------------------------------------------------
   lb:
     image: haproxy:2.8-alpine
     networks:
@@ -148,38 +126,6 @@ services:
       rollback_config:
         parallelism: 1
         delay: 5s
-    healthcheck:
-      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
- 
-  # -------------------------------------------------------------------------
-  # DB — MariaDB + Galera (custom image)
-  #
-  # Placement: mode=global constrained to role=db nodes → exactly one
-  #   container per db node, always.
-  #
-  # hostname: "{{.Node.Hostname}}" — Swarm service template. The container
-  #   hostname becomes the Swarm node name (db1, db2, db3). entrypoint.sh
-  #   uses this to identify the bootstrap node on fresh deploys.
-  #
-  # endpoint_mode: dnsrr — each task gets its own A-record. 'app_db'
-  #   resolves to all three task IPs. Required by Galera so each node
-  #   connects to real peer IPs, not a single VIP.
-  #
-  # Bootstrap logic (handled entirely by entrypoint.sh — no separate service):
-  #   Fresh deploy:
-  #     db1 (GALERA_BOOTSTRAP_NODE): starts --wsrep-new-cluster immediately
-  #     db2, db3: wait up to 120s for port 4567 on app_db, then join
-  #   Subsequent restarts:
-  #     grastate.dat determines who bootstraps (safe_to_bootstrap=1)
-  #     All other nodes join normally; IST syncs deltas, SST copies full state
-  #
-  # Update strategy: stop-first with 30s delay between nodes. Never update
-  #   two Galera nodes simultaneously — cluster loses quorum below 2/3 nodes.
-  # -------------------------------------------------------------------------
   db:
     image: a24cesarba/galera-mariadb:10.11   # built from galera-image/Dockerfile
     hostname: "{{.Node.Hostname}}"
@@ -190,19 +136,12 @@ services:
       - db_root_password
       - db_galera_password
     environment:
-      # Secret file paths (read by entrypoint.sh and initdb scripts)
       MYSQL_ROOT_PASSWORD_FILE:   /run/secrets/db_root_password
       GALERA_SST_PASSWORD_FILE:   /run/secrets/db_galera_password
-      # Cluster identity
       GALERA_CLUSTER_NAME:        galera_cluster
-      # gcomm://app_db resolves to all task IPs via dnsrr
       GALERA_CLUSTER_ADDRESS:     gcomm://app_db
-      # Service name used by entrypoint to probe port 4567 on join wait
       GALERA_CLUSTER_SERVICE:     app_db
-      # Node that starts --wsrep-new-cluster on fresh (empty datadir) deploy.
-      # Matches the hostname of db1 (set via hostname: "{{.Node.Hostname}}").
       GALERA_BOOTSTRAP_NODE:      db1
-      # SST user created by initdb/01-sst-user.sh on first boot
       GALERA_SST_USER:            galera_sst
     volumes:
       - db_data:/var/lib/mysql   # local per-node; Galera replicates state
@@ -214,7 +153,7 @@ services:
       endpoint_mode: dnsrr
       resources:
         limits:
-          memory: 2048M
+          memory: 2000M
         reservations:
           memory: 1024M
       restart_policy:
@@ -231,24 +170,6 @@ services:
         parallelism: 1
         delay: 30s
         order: stop-first
-    healthcheck:
-      # Checks MariaDB is up AND Galera is connected (wsrep_ready=ON)
-      test:
-        - "CMD-SHELL"
-        - |
-          mysql -uroot -p"$$(cat /run/secrets/db_root_password)" \
-            -e "SHOW STATUS LIKE 'wsrep_ready';" 2>/dev/null \
-            | grep -q "ON"
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 90s   # SST on first join can take time
- 
-# ---------------------------------------------------------------------------
-# Volumes
-# db_data is local per-node. Galera handles replication — each node
-# maintains its own full copy of the data. No shared storage needed.
-# ---------------------------------------------------------------------------
 volumes:
   db_data:
     driver: local

@@ -5,11 +5,6 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     apt-get update
     apt-get install -y linux-headers-amd64 build-essential dkms
-
-    id -u ansible &>/dev/null || useradd -m -s /bin/bash ansible
-
-    echo "ansible ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ansible
-    chmod 440 /etc/sudoers.d/ansible
   SHELL
 
   # =========================================================
