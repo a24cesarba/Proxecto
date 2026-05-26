@@ -54,7 +54,7 @@ NODE_NAME="${GALERA_NODE_NAME:-$(hostname)}"
 # Auto-detect the container's IP on the overlay network. This is what Galera
 # advertises to peers for replication traffic. 'hostname -i' returns the
 # container's primary overlay IP assigned by Docker Swarm.
-NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(hostname -i | awk '{print $1}')}"
+NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(ip -4 addr show | grep inet | grep -v '127.0.0.1' | grep -v '172.18' | awk '{print $2}' | cut -d/ -f1 | head -n 1)}"
 
 log "Node identity → name=${NODE_NAME}  overlay_addr=${NODE_ADDRESS}"
 

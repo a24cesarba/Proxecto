@@ -36,7 +36,8 @@ Vagrant.configure("2") do |config|
         vb.cpus = 1
         vb.linked_clone = true
         vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
-        vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"] # Red Swarm en modo promiscuo
+        vb.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"] # Para frontend (eth2)
+        vb.customize ["modifyvm", :id, "--nicpromisc4", "allow-all"] # Para web-net (eth3)
         vb.customize ["modifyvm", :id, "--nic3", "natnetwork"]
         vb.customize ["modifyvm", :id, "--nat-network2", "ProyectoNetwork"]
       end
@@ -77,6 +78,8 @@ Vagrant.configure("2") do |config|
         vb.memory = "512" # Ultra ligero para HAProxy
         vb.cpus = 1
         vb.linked_clone = true
+        vb.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"] # Para web-net (eth2)
+        vb.customize ["modifyvm", :id, "--nicpromisc4", "allow-all"] # Para backend-net (eth3)
         vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
       end
 
@@ -109,6 +112,7 @@ Vagrant.configure("2") do |config|
         vb.memory = "2048" # 2 GB de RAM para que MariaDB respire bien
         vb.cpus = 1        # 1 vCPU para no saturar tu host
         vb.linked_clone = true
+        vb.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"] # Para backend-net (eth2)
         vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
       end
 
