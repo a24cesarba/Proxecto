@@ -1,0 +1,434 @@
+---
+# =============================================================================
+# iptables.yml — Configuración de cortafuegos para todo el clúster
+#
+# Ejecutar UNA VEZ después de swarm.yml y antes de desplegar stacks:
+#   ansible-playbook iptables.yml
+#
+# ARQUITECTURA DE FILTRADO (dos cadenas, dos caminos):
+#
+#   INPUT chain  → tráfico destinado al propio host (SSH, Swarm, API TLS,
+#                  GlusterFS, y puertos mode:host como 80/443 en Traefik).
+#                  Política por defecto: DROP.
+#
+#   DOCKER-USER  → tráfico reenviado a contenedores (puertos mode:ingress
+#                  como Prometheus :9090, Alertmanager :9093).
+#                  Docker aplica DNAT en PREROUTING antes de que el paquete
+#                  llegue a INPUT, por lo que INPUT no lo ve.
+#                  DOCKER-USER es la cadena que Docker consulta ANTES que sus
+#                  propias reglas, ideal para restricciones de fuente.
+#
+# INTERFACES POR ROL (según Vagrantfile):
+#   eth0  — NAT Vagrant (10.0.2.x) — acceso SSH del host
+#   eth1  — Red gestión Swarm (10.0.0.x) — advertise-addr, gossip, API TLS
+#   eth2  — Red datos Swarm (10.10.0.x) — data-path-addr, VXLAN overlay
+#   eth3  — Red frontend (192.168.56.x) — HTTP/S en traefik, admin en managers
+#
+# NOTA: No se tocan las cadenas DOCKER, DOCKER-INGRESS ni FORWARD default
+# porque Docker las gestiona. Solo añadimos reglas en DOCKER-USER e INPUT.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAY 1 — Resetear a estado seguro en TODOS los nodos
+# Se pone política ACCEPT antes de limpiar para no cortarse el SSH.
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Resetear iptables a estado limpio en todos los nodos
+  hosts: todos
+  become: yes
+  tasks:
+
+    - name: Política INPUT → ACCEPT temporalmente (evita bloqueo durante el flush)
+      ansible.builtin.iptables:
+        chain: INPUT
+        policy: ACCEPT
+
+    - name: Vaciar cadena INPUT
+      ansible.builtin.iptables:
+        chain: INPUT
+        flush: yes
+
+    - name: Vaciar cadena FORWARD
+      ansible.builtin.iptables:
+        chain: FORWARD
+        flush: yes
+
+    - name: Vaciar cadena DOCKER-USER (si existe)
+      ansible.builtin.command: iptables -F DOCKER-USER
+      changed_when: true
+      failed_when: false   # puede no existir antes del primer arranque de Docker
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAY 2 — Reglas INPUT base comunes a TODOS los nodos
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Reglas INPUT base (todos los nodos)
+  hosts: todos
+  become: yes
+  tasks:
+
+    # ── Loopback ─────────────────────────────────────────────────────────────
+    - name: ACCEPT loopback (lo)
+      ansible.builtin.iptables:
+        chain: INPUT
+        in_interface: lo
+        jump: ACCEPT
+        comment: "loopback"
+
+    # ── Conexiones establecidas ───────────────────────────────────────────────
+    # Permite el tráfico de retorno de conexiones que el propio nodo inició.
+    # Sin esta regla, nada que salga puede recibir respuesta.
+    - name: ACCEPT conexiones ESTABLISHED y RELATED
+      ansible.builtin.iptables:
+        chain: INPUT
+        ctstate:
+          - ESTABLISHED
+          - RELATED
+        jump: ACCEPT
+        comment: "established-related"
+
+    # ── ICMP (ping, traceroute, MTU path discovery) ───────────────────────────
+    # Rate-limit a 10 pings/s para evitar flood. Permite tanto desde la red de
+    # gestión como desde la NAT de Vagrant (diagnóstico desde el host).
+    - name: ACCEPT ICMP echo-request con rate limit desde redes internas
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: icmp
+        icmp_type: echo-request
+        source: "10.0.0.0/8"
+        match: limit
+        limit: "10/sec"
+        jump: ACCEPT
+        comment: "icmp-internal"
+
+    - name: ACCEPT ICMP echo-request desde NAT Vagrant
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: icmp
+        icmp_type: echo-request
+        source: "10.0.2.0/24"
+        match: limit
+        limit: "10/sec"
+        jump: ACCEPT
+        comment: "icmp-vagrant-nat"
+
+    # ── SSH ───────────────────────────────────────────────────────────────────
+    # Vagrant accede via SSH por el NAT (eth0, 10.0.2.x).
+    # También se permite desde la red de gestión para acceso entre nodos.
+    - name: ACCEPT SSH desde NAT Vagrant
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "22"
+        source: "10.0.2.0/24"
+        jump: ACCEPT
+        comment: "ssh-vagrant-nat"
+
+    - name: ACCEPT SSH desde red de gestión
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "22"
+        source: "10.0.0.0/24"
+        jump: ACCEPT
+        comment: "ssh-mgmt"
+
+    - name: ACCEPT SSH desde red host-only (acceso admin desde VirtualBox host)
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "22"
+        source: "192.168.56.0/24"
+        jump: ACCEPT
+        comment: "ssh-hostonly"
+
+    # ── Docker Swarm — gossip (eth1, red de gestión) ──────────────────────────
+    # Puerto 7946 TCP+UDP: discovery y heartbeat entre todos los nodos Swarm.
+    # Viaja por la interfaz de advertise-addr (eth1, 10.0.0.x).
+    - name: ACCEPT Swarm gossip TCP 7946 desde red gestión
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "7946"
+        source: "10.0.0.0/24"
+        jump: ACCEPT
+        comment: "swarm-gossip-tcp"
+
+    - name: ACCEPT Swarm gossip UDP 7946 desde red gestión
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: udp
+        destination_port: "7946"
+        source: "10.0.0.0/24"
+        jump: ACCEPT
+        comment: "swarm-gossip-udp"
+
+    # ── Docker Swarm — VXLAN overlay (eth2, red de datos) ─────────────────────
+    # Puerto 4789 UDP: encapsulación de paquetes de las redes overlay cifradas.
+    # Viaja por data-path-addr (eth2, 10.10.0.x).
+    - name: ACCEPT VXLAN overlay UDP 4789 desde red de datos
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: udp
+        destination_port: "4789"
+        source: "10.10.0.0/24"
+        jump: ACCEPT
+        comment: "vxlan-overlay"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAY 3 — Reglas INPUT adicionales para nodos MANAGER (web1, web2, web3)
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Reglas INPUT para managers
+  hosts: managers
+  become: yes
+  tasks:
+
+    # ── Swarm — puerto de join (solo managers lo aceptan) ─────────────────────
+    - name: ACCEPT Swarm join TCP 2377 desde red gestión
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "2377"
+        source: "10.0.0.0/24"
+        jump: ACCEPT
+        comment: "swarm-join"
+
+    # ── Docker API remota con mTLS ─────────────────────────────────────────────
+    # Puerto 2376 TCP: solo los nodos Traefik (10.0.0.41-42) lo necesitan.
+    # /30 a partir de .40 cubre exactamente .41 y .42.
+    # Las reglas de iptables del playbook docker-tls.yml se eliminan porque
+    # este playbook es la única fuente de verdad para el cortafuegos.
+    - name: ACCEPT Docker API TLS TCP 2376 solo desde nodos Traefik
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "2376"
+        source: "10.0.0.40/30"
+        jump: ACCEPT
+        comment: "docker-api-tls-traefik"
+
+    # ── GlusterFS — entre nodos web únicamente (10.0.0.11-13) ────────────────
+    # Puerto 24007: daemon glusterd (gestión del clúster GlusterFS).
+    # Puertos 49152-49160: procesos brick (un brick por nodo; rango conservador).
+    # Solo se permite desde los otros managers, no desde el resto del clúster.
+    - name: ACCEPT GlusterFS glusterd TCP 24007 desde managers
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "24007"
+        source: "10.0.0.11/32"
+        jump: ACCEPT
+        comment: "gluster-glusterd-web1"
+
+    - name: ACCEPT GlusterFS glusterd TCP 24007 desde web2
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "24007"
+        source: "10.0.0.12/32"
+        jump: ACCEPT
+        comment: "gluster-glusterd-web2"
+
+    - name: ACCEPT GlusterFS glusterd TCP 24007 desde web3
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "24007"
+        source: "10.0.0.13/32"
+        jump: ACCEPT
+        comment: "gluster-glusterd-web3"
+
+    - name: ACCEPT GlusterFS bricks TCP 49152:49160 desde web1
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "49152:49160"
+        source: "10.0.0.11/32"
+        jump: ACCEPT
+        comment: "gluster-brick-web1"
+
+    - name: ACCEPT GlusterFS bricks TCP 49152:49160 desde web2
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "49152:49160"
+        source: "10.0.0.12/32"
+        jump: ACCEPT
+        comment: "gluster-brick-web2"
+
+    - name: ACCEPT GlusterFS bricks TCP 49152:49160 desde web3
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "49152:49160"
+        source: "10.0.0.13/32"
+        jump: ACCEPT
+        comment: "gluster-brick-web3"
+
+    # ── Prometheus dashboard (mode:ingress — no aplica INPUT, ver PLAY 5) ─────
+    # Puerto 9090 publicado vía ingress routing mesh — lo gestiona DOCKER-USER.
+    # Aquí no hace falta ninguna regla INPUT para 9090.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAY 4 — Reglas INPUT para nodos TRAEFIK (traefik1, traefik2)
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Reglas INPUT para nodos Traefik
+  hosts: traefik
+  become: yes
+  tasks:
+
+    # ── HTTP/HTTPS públicos (mode:host — SÍ pasan por INPUT) ─────────────────
+    # Traefik publica 80 y 443 con mode:host, que vincula directamente al socket
+    # del host. El tráfico entra por eth3 (192.168.56.2x) y sí pasa por INPUT.
+    - name: ACCEPT HTTP 80 desde cualquier fuente
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "80"
+        jump: ACCEPT
+        comment: "http-public"
+
+    - name: ACCEPT HTTPS 443 desde cualquier fuente
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "443"
+        jump: ACCEPT
+        comment: "https-public"
+
+    # ── Dashboard Traefik (mode:ingress en :8081 — ver DOCKER-USER) ───────────
+    # El dashboard se publica como mode:ingress. La restricción a la red de
+    # gestión se aplica en PLAY 5 mediante DOCKER-USER, no aquí.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAY 5 — Reglas DOCKER-USER para puertos mode:ingress
+#
+# Estos puertos NO pasan por INPUT porque Docker aplica DNAT en PREROUTING:
+#   Prometheus   :9090  (publicado en managers)
+#   Alertmanager :9093  (publicado en managers)
+#   cAdvisor     :8080  (publicado en todos los nodos, modo global)
+#   Dashboard    :8081  (publicado en nodos traefik)
+#
+# DOCKER-USER usa --ctorigdstport para filtrar por el puerto original (antes
+# del DNAT), lo que permite restricciones específicas por servicio.
+# Las reglas se INSERTAN al principio (-I) para ejecutarse antes que las
+# reglas de Docker.
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Reglas DOCKER-USER para servicios mode:ingress (todos los nodos)
+  hosts: todos
+  become: yes
+  tasks:
+
+    # ── Permitir redes internas acceso completo a contenedores ────────────────
+    # Las redes Docker (overlay, gwbridge) tienen rangos 172.16.0.0/12.
+    # La red de gestión (10.0.0.0/24) puede acceder a todos los servicios.
+    # La red host-only (192.168.56.0/24) permite acceso admin desde el host.
+    - name: DOCKER-USER ACCEPT desde redes Docker internas (overlay, gwbridge)
+      ansible.builtin.command: >
+        iptables -I DOCKER-USER 1
+          -s 172.16.0.0/12
+          -m comment --comment "docker-user-internal-nets"
+          -j ACCEPT
+      changed_when: true
+      failed_when: false
+
+    - name: DOCKER-USER ACCEPT desde red de gestión Swarm
+      ansible.builtin.command: >
+        iptables -I DOCKER-USER 1
+          -s 10.0.0.0/24
+          -m comment --comment "docker-user-mgmt-net"
+          -j ACCEPT
+      changed_when: true
+      failed_when: false
+
+    - name: DOCKER-USER ACCEPT desde red host-only VirtualBox (admin)
+      ansible.builtin.command: >
+        iptables -I DOCKER-USER 1
+          -s 192.168.56.0/24
+          -m comment --comment "docker-user-hostonly"
+          -j ACCEPT
+      changed_when: true
+      failed_when: false
+
+    # ── Bloquear acceso externo a puertos de monitorización ───────────────────
+    # Se filtran por el puerto ORIGINAL (antes del DNAT) usando ctorigdstport.
+    # Cualquier fuente que NO haya pasado las reglas ACCEPT anteriores y
+    # que intente acceder a estos puertos es bloqueada.
+    - name: DOCKER-USER DROP acceso externo a Prometheus :9090
+      ansible.builtin.command: >
+        iptables -A DOCKER-USER
+          -m conntrack --ctorigdstport 9090
+          -m comment --comment "docker-user-drop-prometheus"
+          -j DROP
+      changed_when: true
+      failed_when: false
+
+    - name: DOCKER-USER DROP acceso externo a Alertmanager :9093
+      ansible.builtin.command: >
+        iptables -A DOCKER-USER
+          -m conntrack --ctorigdstport 9093
+          -m comment --comment "docker-user-drop-alertmanager"
+          -j DROP
+      changed_when: true
+      failed_when: false
+
+    - name: DOCKER-USER DROP acceso externo a cAdvisor :8080
+      ansible.builtin.command: >
+        iptables -A DOCKER-USER
+          -m conntrack --ctorigdstport 8080
+          -m comment --comment "docker-user-drop-cadvisor"
+          -j DROP
+      changed_when: true
+      failed_when: false
+
+    - name: DOCKER-USER DROP acceso externo a dashboard Traefik :8081
+      ansible.builtin.command: >
+        iptables -A DOCKER-USER
+          -m conntrack --ctorigdstport 8081
+          -m comment --comment "docker-user-drop-traefik-dash"
+          -j DROP
+      changed_when: true
+      failed_when: false
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAY 6 — Aplicar política DROP en INPUT y guardar reglas
+# Se hace AL FINAL, después de que todas las reglas ACCEPT están en su lugar.
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Aplicar política DROP y guardar reglas (todos los nodos)
+  hosts: todos
+  become: yes
+  tasks:
+
+    - name: Política INPUT → DROP (todo lo no explícitamente permitido se descarta)
+      ansible.builtin.iptables:
+        chain: INPUT
+        policy: DROP
+
+    # netfilter-persistent guarda las reglas en /etc/iptables/rules.v4
+    # y las carga automáticamente en el arranque del sistema.
+    - name: Guardar reglas IPv4 de forma persistente
+      ansible.builtin.command: netfilter-persistent save
+      changed_when: true
+
+    - name: Verificar reglas INPUT aplicadas
+      ansible.builtin.command: iptables -L INPUT -n --line-numbers -v
+      register: ipt_check
+      changed_when: false
+
+    - name: Mostrar resumen de reglas INPUT
+      ansible.builtin.debug:
+        msg: "{{ ipt_check.stdout_lines }}"
+
+    - name: Verificar reglas DOCKER-USER aplicadas
+      ansible.builtin.command: iptables -L DOCKER-USER -n --line-numbers
+      register: du_check
+      changed_when: false
+      failed_when: false
+
+    - name: Mostrar resumen de reglas DOCKER-USER
+      ansible.builtin.debug:
+        msg: "{{ du_check.stdout_lines | default(['cadena no existe aún — se creará al arrancar Docker']) }}"

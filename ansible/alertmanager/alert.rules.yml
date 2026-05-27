@@ -1,0 +1,85 @@
+# =============================================================================
+# alert.rules.yml — reglas de alerta para autoescalado del servicio web
+#
+# Las métricas vienen de cAdvisor. El label 'container_label_com_docker_swarm_
+# service_name' identifica a qué servicio Swarm pertenece cada contenedor.
+#
+# Dos alertas simétricas:
+#   WebHighCpu  → dispara scale-up (firing)  y scale-down cuando resuelve
+#   WebLowCpu   → dispara scale-down (firing) para liberar recursos
+# =============================================================================
+
+groups:
+
+  - name: web_autoscale
+    interval: 30s    # evaluar cada 30s (más rápido que el global de 15s)
+
+    rules:
+
+      # ── Scale UP ───────────────────────────────────────────────────────────
+      # CPU media de los contenedores web > 70% durante 2 minutos.
+      # Usamos irate (instantaneous rate) para detectar picos rápidos.
+      # El label swarm_service filtra solo el servicio 'app_web'.
+      - alert: WebHighCpu
+        expr: |
+          avg(
+            irate(
+              container_cpu_usage_seconds_total{
+                container_label_com_docker_swarm_service_name="app_web",
+                id!="/"
+              }[2m]
+            )
+          ) by (container_label_com_docker_swarm_service_name)
+          > 0.70
+        for: 2m    # mantener durante 2 min antes de disparar (evita falsos positivos)
+        labels:
+          severity: warning
+          action: scale_up
+          service: app_web
+        annotations:
+          summary: "CPU alta en servicio web — escalar hacia arriba"
+          description: >
+            El uso medio de CPU del servicio app_web lleva más de 2 minutos
+            por encima del 70%. Réplicas actuales: {{ $value | printf "%.0f" }}.
+
+      # ── Scale DOWN ─────────────────────────────────────────────────────────
+      # CPU media < 20% durante 5 minutos → liberar réplicas sobrantes.
+      # Umbral conservador y tiempo largo para evitar flapping (oscillaciones).
+      - alert: WebLowCpu
+        expr: |
+          avg(
+            irate(
+              container_cpu_usage_seconds_total{
+                container_label_com_docker_swarm_service_name="app_web",
+                id!="/"
+              }[5m]
+            )
+          ) by (container_label_com_docker_swarm_service_name)
+          < 0.20
+        for: 5m    # más conservador en scale-down para evitar flapping
+        labels:
+          severity: info
+          action: scale_down
+          service: app_web
+        annotations:
+          summary: "CPU baja en servicio web — escalar hacia abajo"
+          description: >
+            El uso medio de CPU del servicio app_web lleva más de 5 minutos
+            por debajo del 20%. Se puede reducir el número de réplicas.
+
+      # ── Alerta informativa: nodo Galera fuera del clúster ─────────────────
+      # No escala nada — es para alertar al operador via Alertmanager.
+      - alert: GaleraNodeDown
+        expr: |
+          count(
+            up{job="cadvisor",
+               container_label_com_docker_swarm_service_name="app_db"}
+          ) < 3
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Nodo Galera caído — clúster en riesgo de pérdida de quórum"
+          description: >
+            Solo {{ $value }} nodos Galera están activos. El mínimo para
+            mantener quórum es 3. Revisar el estado del stack app.

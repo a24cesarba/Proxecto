@@ -1,0 +1,66 @@
+# =============================================================================
+# alertmanager.yml — routing de alertas
+#
+# Las alertas de autoescalado van al webhook del autoscaler.
+# Otras alertas (GaleraNodeDown) pueden ir a un canal distinto (email, Slack…).
+# =============================================================================
+
+global:
+  resolve_timeout: 5m
+
+# ── Inhibit rules ─────────────────────────────────────────────────────────────
+# Si está activo un WebHighCpu no enviar también WebLowCpu para el mismo servicio
+inhibit_rules:
+  - source_matchers:
+      - 'alertname = "WebHighCpu"'
+    target_matchers:
+      - 'alertname = "WebLowCpu"'
+    equal: ['service']
+
+# ── Route tree ────────────────────────────────────────────────────────────────
+route:
+  receiver: 'null'          # receptor por defecto (silencio)
+  group_by: ['alertname', 'service']
+  group_wait:      30s      # esperar antes de enviar el primer grupo
+  group_interval:  5m       # esperar entre grupos sucesivos
+  repeat_interval: 1h       # re-enviar alertas activas cada hora
+
+  routes:
+
+    # ── Alertas de autoescalado → autoscaler webhook ─────────────────────
+    # Coincide con cualquier alerta que tenga el label action=scale_up
+    # o action=scale_down (definidos en alert.rules.yml).
+    - receiver: 'autoscaler-webhook'
+      matchers:
+        - 'action =~ "scale_up|scale_down"'
+      group_wait:      10s   # reaccionar rápido al escalar
+      group_interval:  60s
+      repeat_interval: 2m    # re-enviar si la alerta sigue activa
+
+    # ── Alertas críticas de infraestructura ───────────────────────────────
+    # Descomentar y configurar para recibir alertas de Galera, etc.
+    # - receiver: 'ops-email'
+    #   matchers:
+    #     - 'severity = "critical"'
+
+# ── Receivers ─────────────────────────────────────────────────────────────────
+receivers:
+
+  - name: 'null'   # receptor vacío (descarta alertas)
+
+  - name: 'autoscaler-webhook'
+    webhook_configs:
+      - url: 'http://monitoring_autoscaler:5000/webhook'
+        send_resolved: true   # enviar también cuando la alerta se resuelve
+        http_config:
+          timeout: 10s
+
+  # Ejemplo de receptor de email (requiere configurar global.smtp_*)
+  # - name: 'ops-email'
+  #   email_configs:
+  #     - to: 'ops@tudominio.com'
+  #       from: 'alertmanager@tudominio.com'
+  #       smarthost: 'smtp.tudominio.com:587'
+  #       auth_username: 'alertmanager@tudominio.com'
+  #       auth_password: 'SECRET'
+  #       require_tls: true

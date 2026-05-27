@@ -1,0 +1,70 @@
+# =============================================================================
+# /etc/traefik/traefik.yml  —  configuración estática de Traefik v3
+#
+# DIFERENCIA CLAVE respecto a la versión con socket:
+# El provider Docker usa TCP+mTLS para acceder a la API del manager (web1)
+# en lugar de montar /var/run/docker.sock.
+# Los certificados TLS los inyecta Docker como secrets en /run/secrets/.
+# =============================================================================
+
+api:
+  dashboard: true
+  insecure: true    # dashboard en :8080 — ok en red interna
+
+entryPoints:
+  web:
+    address: ":80"
+    # Para redirigir HTTP → HTTPS en producción:
+    # http:
+    #   redirections:
+    #     entryPoint:
+    #       to: websecure
+    #       scheme: https
+
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    # Conexión remota a la Docker API del manager primario via mTLS.
+    # Puerto 2376 es el estándar para Docker API con TLS.
+    # Si web1 cae, Traefik sigue sirviendo tráfico con la config en caché
+    # pero no descubrirá nuevos servicios hasta que la API esté disponible.
+    endpoint: "tcp://10.0.0.11:2376"
+
+    tls:
+      # Certificados inyectados por Docker Swarm desde los secrets:
+      #   docker_client_ca   → /run/secrets/docker_client_ca
+      #   docker_client_cert → /run/secrets/docker_client_cert
+      #   docker_client_key  → /run/secrets/docker_client_key
+      ca:                /run/secrets/docker_client_ca
+      cert:              /run/secrets/docker_client_cert
+      key:               /run/secrets/docker_client_key
+      insecureSkipVerify: false    # verificar el cert del servidor siempre
+
+    swarmMode: true
+    swarmModeRefreshSeconds: 15
+    exposedByDefault: false        # solo servicios con traefik.enable=true
+    # Nombre real de la red overlay en Swarm: <stack>_<red>
+    network: app_proxy_web
+
+log:
+  level: "INFO"
+
+accessLog:
+  bufferingSize: 100
+
+metrics:
+  prometheus:
+    addEntryPointsLabels: true
+    addServicesLabels: true
+    entryPoint: traefik
+
+# Para TLS real con Let's Encrypt (descomentar en producción):
+# certificatesResolvers:
+#   letsencrypt:
+#     acme:
+#       email: admin@tudominio.com
+#       storage: /letsencrypt/acme.json
+#       httpChallenge:
+#         entryPoint: web
