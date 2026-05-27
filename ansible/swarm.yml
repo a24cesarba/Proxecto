@@ -4,7 +4,10 @@
   become: yes
   vars:
     swarm_leader_ip: "10.0.0.11"
+    swarm_leader_data_ip: "10.10.0.11"   # fix: antes 'swarm_data_leader_ip' (typo)
     leader_hostname: "web1"
+    mgmt_ip: "{{ ansible_facts['eth1']['ipv4']['address'] }}"
+    data_ip: "{{ ansible_facts['eth2']['ipv4']['address'] }}"
 
   tasks:
 
@@ -13,10 +16,13 @@
       register: swarm_check
       changed_when: false
 
-    # --- TAREAS DEL LÍDER ---
+    # ── LÍDER ────────────────────────────────────────────────────────────────
 
     - name: Inicializar Docker Swarm en el Líder
-      ansible.builtin.command: "docker swarm init --advertise-addr {{ swarm_leader_ip }}"
+      ansible.builtin.command: >
+        docker swarm init
+          --advertise-addr {{ swarm_leader_ip }}
+          --data-path-addr {{ swarm_leader_data_ip }}
       when:
         - inventory_hostname == leader_hostname
         - "'Swarm: inactive' in swarm_check.stdout"
@@ -33,32 +39,38 @@
       when: inventory_hostname == leader_hostname
       changed_when: false
 
-    # --- TAREAS DE MANAGERS SECUNDARIOS ---
+    # ── MANAGERS SECUNDARIOS (web2, web3) ─────────────────────────────────
 
-    - name: Unir web2 y web3 al clúster como Managers
+    - name: Unir web2 y web3 como Managers
       ansible.builtin.command: >
         docker swarm join
-        --token {{ hostvars[leader_hostname]['manager_token_raw']['stdout'] }}
-        {{ swarm_leader_ip }}:2377
+          --token {{ hostvars[leader_hostname]['manager_token_raw']['stdout'] }}
+          --advertise-addr {{ mgmt_ip }}
+          --data-path-addr {{ data_ip }}
+          {{ swarm_leader_ip }}:2377
       when:
         - inventory_hostname in groups['webs']
         - inventory_hostname != leader_hostname
         - "'Swarm: inactive' in swarm_check.stdout"
 
-    # --- TAREAS DE WORKERS ---
+    # ── WORKERS (lb, db, traefik) ─────────────────────────────────────────
+    # Todos los nodos del grupo 'workers' usan el token de worker.
+    # Incluye traefik1 y traefik2.
 
     - name: Unir nodos al clúster como Workers
       ansible.builtin.command: >
         docker swarm join
-        --token {{ hostvars[leader_hostname]['worker_token_raw']['stdout'] }}
-        {{ swarm_leader_ip }}:2377
+          --token {{ hostvars[leader_hostname]['worker_token_raw']['stdout'] }}
+          --advertise-addr {{ mgmt_ip }}
+          --data-path-addr {{ data_ip }}
+          {{ swarm_leader_ip }}:2377
       when:
         - inventory_hostname in groups['workers']
         - "'Swarm: inactive' in swarm_check.stdout"
 
-    # --- ETIQUETAS DE NODOS ---
+    # ── ETIQUETAS ─────────────────────────────────────────────────────────
 
-    - name: Etiquetar nodos balanceadores (role=lb)
+    - name: Etiquetar nodos balanceadores MySQL (role=lb)
       ansible.builtin.command: "docker node update --label-add role=lb {{ item }}"
       loop: "{{ groups['balanceadores'] }}"
       when: inventory_hostname == leader_hostname
@@ -70,94 +82,25 @@
       when: inventory_hostname == leader_hostname
       changed_when: false
 
-    # db1 es el nodo que arranca el cluster Galera en el primer despliegue.
-    # El entrypoint de la imagen Galera comprueba esta etiqueta para decidir
-    # si lanzar --wsrep-new-cluster o hacer join.
+    # role=traefik: los contenedores Traefik se colocan exclusivamente en estas
+    # VMs, que tienen la IP de frontend (192.168.56.2x) y publican 80/443.
+    - name: Etiquetar nodos Traefik (role=traefik)
+      ansible.builtin.command: "docker node update --label-add role=traefik {{ item }}"
+      loop: "{{ groups['traefik'] }}"
+      when: inventory_hostname == leader_hostname
+      changed_when: false
+
     - name: Etiquetar db1 como nodo bootstrap de Galera
       ansible.builtin.command: "docker node update --label-add galera.bootstrap=true db1"
       when: inventory_hostname == leader_hostname
       changed_when: false
 
+    # ── VERIFICACIÓN FINAL ────────────────────────────────────────────────
 
-# Configuración de redes locales para poder usar macvlan en swarm
-
-    - name: Crear configuracion de red local para Frontend
-      docker_network:
-        name: frontend_config
-        driver: macvlan
-        config_only: true
-        ipam_config:
-          - subnet: 192.168.56.0/24
-        driver_options:
-          parent: eth2
-      when: inventory_hostname in groups['webs']
-
-    - name: Crear configuracion de red local para Web-LB (Webs y LBs)
-      docker_network:
-        name: web_lb_config
-        driver: macvlan
-        config_only: true
-        ipam_config:
-          - subnet: 10.10.0.0/24
-        driver_options:
-          # Usa eth3 si es un nodo web, eth2 si es un balanceador
-          parent: "{{ 'eth3' if inventory_hostname in groups['webs'] else 'eth2' }}"
-      when: inventory_hostname in groups['webs'] or inventory_hostname in groups['balanceadores']
-
-    - name: Crear configuracion de red local para Backend (LBs y Bases de Datos)
-      docker_network:
-        name: backend_config
-        driver: macvlan
-        config_only: true
-        ipam_config:
-          - subnet: 10.10.10.0/24
-        driver_options:
-          # Usa eth3 si es un balanceador, eth2 si es base de datos
-          parent: "{{ 'eth3' if inventory_hostname in groups['balanceadores'] else 'eth2' }}"
-      when: inventory_hostname in groups['balanceadores'] or inventory_hostname in groups['bases']
-
-# Creación de redes macvlan swarm desde web1(el jefe)
-
-    - name: Crear red Swarm Macvlan - Frontend
-      ansible.builtin.command: >
-        docker network create -d macvlan --scope swarm
-        --config-from frontend_config frontend
-      when: inventory_hostname == leader_hostname
-      register: net_frontend
-      failed_when: 
-        - net_frontend.rc != 0
-        - "'already exists' not in net_frontend.stderr"
-      changed_when: net_frontend.rc == 0
-
-    - name: Crear red Swarm Macvlan - Web-LB
-      ansible.builtin.command: >
-        docker network create -d macvlan --scope swarm
-        --config-from web_lb_config web_lb
-      when: inventory_hostname == leader_hostname
-      register: net_weblb
-      failed_when: 
-        - net_weblb.rc != 0
-        - "'already exists' not in net_weblb.stderr"
-      changed_when: net_weblb.rc == 0
-
-    - name: Crear red Swarm Macvlan - Backend
-      ansible.builtin.command: >
-        docker network create -d macvlan --scope swarm
-        --config-from backend_config backend
-      when: inventory_hostname == leader_hostname
-      register: net_backend
-      failed_when: 
-        - net_backend.rc != 0
-        - "'already exists' not in net_backend.stderr"
-      changed_when: net_backend.rc == 0
-
-
-    # Verificación final: muestra el estado del clúster y las etiquetas aplicadas.
-    # Útil para confirmar que todo quedó bien antes de desplegar el stack.
     - name: Mostrar estado del clúster y etiquetas
       ansible.builtin.command: >
         docker node ls --format
-        "table {{"{{"}}  .Hostname{{"}}"}}\t{{"{{"}} .Status {{"}}"}}\t{{"{{"}} .ManagerStatus {{"}}"}}\t{{"{{"}} .Availability {{"}}"}}"
+        "table {{"{{"}} .Hostname {{"}}"}}\t{{"{{"}} .Status {{"}}"}}\t{{"{{"}} .ManagerStatus {{"}}"}}\t{{"{{"}} .Availability {{"}}"}}"
       register: swarm_status
       when: inventory_hostname == leader_hostname
       changed_when: false

@@ -1,0 +1,395 @@
+---
+# =============================================================================
+# docker-tls.yml — Configurar acceso remoto seguro a la Docker API
+#
+# Ejecutar UNA VEZ, antes de desplegar el stack, justo después de swarm.yml:
+#   ansible-playbook docker-tls.yml
+#
+# Qué hace este playbook:
+#   1. Genera una CA privada en web1 (válida 10 años)
+#   2. Firma un certificado de servidor con SAN para las IPs de los 3 managers
+#   3. Configura dockerd en todos los managers para escuchar en TCP:2376 con mTLS
+#   4. Genera un certificado de cliente firmado por la misma CA
+#   5. Crea los Docker secrets 'docker_client_ca', 'docker_client_cert',
+#      'docker_client_key' para que Traefik los use desde /run/secrets/
+#
+# Los certificados se guardan en /etc/docker/tls/ en los managers.
+# Las claves privadas tienen permisos 0400 (solo root).
+# =============================================================================
+
+# ── FASE 1: Generar certificados en web1 (el manager líder) ──────────────────
+- name: Generar CA y certificados TLS en el manager líder
+  hosts: web1
+  become: yes
+  vars:
+    tls_dir: /etc/docker/tls
+    # IPs de los managers — deben coincidir con eth1 del Vagrantfile
+    manager_ips:
+      - "10.0.0.11"
+      - "10.0.0.12"
+      - "10.0.0.13"
+
+  tasks:
+
+    - name: Instalar openssl
+      ansible.builtin.apt:
+        name: openssl
+        state: present
+        update_cache: yes
+
+    - name: Crear directorio TLS
+      ansible.builtin.file:
+        path: "{{ tls_dir }}"
+        state: directory
+        mode: '0700'
+        owner: root
+        group: root
+
+    # ── CA ─────────────────────────────────────────────────────────────────
+
+    - name: Comprobar si la CA ya existe
+      ansible.builtin.stat:
+        path: "{{ tls_dir }}/ca.pem"
+      register: ca_exists
+
+    - name: Generar clave privada de la CA (4096 bits)
+      ansible.builtin.command: >
+        openssl genrsa -out {{ tls_dir }}/ca-key.pem 4096
+      when: not ca_exists.stat.exists
+      args:
+        creates: "{{ tls_dir }}/ca-key.pem"
+
+    - name: Generar certificado autofirmado de la CA (10 años)
+      ansible.builtin.command: >
+        openssl req -new -x509 -days 3650
+          -key {{ tls_dir }}/ca-key.pem
+          -sha256
+          -out {{ tls_dir }}/ca.pem
+          -subj "/CN=docker-swarm-ca/O=Proxecto/C=ES"
+      when: not ca_exists.stat.exists
+      args:
+        creates: "{{ tls_dir }}/ca.pem"
+
+    # ── Certificado de SERVIDOR (para dockerd en los managers) ─────────────
+    # El SAN incluye las IPs de los 3 managers para que un solo certificado
+    # sea válido en web1, web2 y web3.
+
+    - name: Comprobar si el certificado de servidor ya existe
+      ansible.builtin.stat:
+        path: "{{ tls_dir }}/server-cert.pem"
+      register: server_cert_exists
+
+    - name: Generar clave privada del servidor
+      ansible.builtin.command: >
+        openssl genrsa -out {{ tls_dir }}/server-key.pem 4096
+      when: not server_cert_exists.stat.exists
+      args:
+        creates: "{{ tls_dir }}/server-key.pem"
+
+    - name: Generar CSR del servidor
+      ansible.builtin.command: >
+        openssl req -new
+          -key {{ tls_dir }}/server-key.pem
+          -sha256
+          -out {{ tls_dir }}/server.csr
+          -subj "/CN=docker-manager/O=Proxecto/C=ES"
+      when: not server_cert_exists.stat.exists
+
+    - name: Escribir fichero de extensiones SAN para el servidor
+      ansible.builtin.copy:
+        dest: "{{ tls_dir }}/extfile-server.cnf"
+        content: |
+          subjectAltName = IP:10.0.0.11,IP:10.0.0.12,IP:10.0.0.13,IP:127.0.0.1
+          extendedKeyUsage = serverAuth
+        mode: '0600'
+      when: not server_cert_exists.stat.exists
+
+    - name: Firmar certificado de servidor con la CA
+      ansible.builtin.command: >
+        openssl x509 -req -days 3650
+          -sha256
+          -in {{ tls_dir }}/server.csr
+          -CA {{ tls_dir }}/ca.pem
+          -CAkey {{ tls_dir }}/ca-key.pem
+          -CAcreateserial
+          -out {{ tls_dir }}/server-cert.pem
+          -extfile {{ tls_dir }}/extfile-server.cnf
+      when: not server_cert_exists.stat.exists
+      args:
+        creates: "{{ tls_dir }}/server-cert.pem"
+
+    # ── Certificado de CLIENTE (para Traefik) ──────────────────────────────
+
+    - name: Comprobar si el certificado de cliente ya existe
+      ansible.builtin.stat:
+        path: "{{ tls_dir }}/client-cert.pem"
+      register: client_cert_exists
+
+    - name: Generar clave privada del cliente
+      ansible.builtin.command: >
+        openssl genrsa -out {{ tls_dir }}/client-key.pem 4096
+      when: not client_cert_exists.stat.exists
+      args:
+        creates: "{{ tls_dir }}/client-key.pem"
+
+    - name: Generar CSR del cliente
+      ansible.builtin.command: >
+        openssl req -new
+          -key {{ tls_dir }}/client-key.pem
+          -sha256
+          -out {{ tls_dir }}/client.csr
+          -subj "/CN=traefik-client/O=Proxecto/C=ES"
+      when: not client_cert_exists.stat.exists
+
+    - name: Escribir fichero de extensiones para el cliente
+      ansible.builtin.copy:
+        dest: "{{ tls_dir }}/extfile-client.cnf"
+        content: |
+          extendedKeyUsage = clientAuth
+        mode: '0600'
+      when: not client_cert_exists.stat.exists
+
+    - name: Firmar certificado de cliente con la CA
+      ansible.builtin.command: >
+        openssl x509 -req -days 3650
+          -sha256
+          -in {{ tls_dir }}/client.csr
+          -CA {{ tls_dir }}/ca.pem
+          -CAkey {{ tls_dir }}/ca-key.pem
+          -CAcreateserial
+          -out {{ tls_dir }}/client-cert.pem
+          -extfile {{ tls_dir }}/extfile-client.cnf
+      when: not client_cert_exists.stat.exists
+      args:
+        creates: "{{ tls_dir }}/client-cert.pem"
+
+    # ── Permisos estrictos ─────────────────────────────────────────────────
+
+    - name: Asegurar permisos 0400 en claves privadas
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: '0400'
+        owner: root
+        group: root
+      loop:
+        - "{{ tls_dir }}/ca-key.pem"
+        - "{{ tls_dir }}/server-key.pem"
+        - "{{ tls_dir }}/client-key.pem"
+
+    - name: Asegurar permisos 0444 en certificados públicos
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: '0444'
+        owner: root
+        group: root
+      loop:
+        - "{{ tls_dir }}/ca.pem"
+        - "{{ tls_dir }}/server-cert.pem"
+        - "{{ tls_dir }}/client-cert.pem"
+
+    # ── Docker secrets para Traefik ────────────────────────────────────────
+    # Los secrets se crean una sola vez. Si ya existen se omite la creación.
+
+    - name: Comprobar secreto docker_client_ca
+      ansible.builtin.command: docker secret inspect docker_client_ca
+      register: s_ca
+      changed_when: false
+      failed_when: false
+
+    - name: Crear secreto docker_client_ca
+      ansible.builtin.shell: >
+        docker secret create docker_client_ca {{ tls_dir }}/ca.pem
+      when: s_ca.rc != 0
+
+    - name: Comprobar secreto docker_client_cert
+      ansible.builtin.command: docker secret inspect docker_client_cert
+      register: s_cert
+      changed_when: false
+      failed_when: false
+
+    - name: Crear secreto docker_client_cert
+      ansible.builtin.shell: >
+        docker secret create docker_client_cert {{ tls_dir }}/client-cert.pem
+      when: s_cert.rc != 0
+
+    - name: Comprobar secreto docker_client_key
+      ansible.builtin.command: docker secret inspect docker_client_key
+      register: s_key
+      changed_when: false
+      failed_when: false
+
+    - name: Crear secreto docker_client_key
+      ansible.builtin.shell: >
+        docker secret create docker_client_key {{ tls_dir }}/client-key.pem
+      when: s_key.rc != 0
+
+
+# ── FASE 2: Distribuir certs de servidor y configurar dockerd en managers ────
+- name: Configurar dockerd con TCP+TLS en todos los managers
+  hosts: managers
+  become: yes
+  vars:
+    tls_dir: /etc/docker/tls
+
+  tasks:
+
+    - name: Crear directorio TLS en todos los managers
+      ansible.builtin.file:
+        path: "{{ tls_dir }}"
+        state: directory
+        mode: '0700'
+
+    # Solo web2 y web3 necesitan copiar los certs — web1 ya los tiene.
+    - name: Copiar CA desde web1 a este manager
+      ansible.builtin.copy:
+        src: "/etc/docker/tls/ca.pem"   # Ansible busca esto en el nodo remoto web1
+        dest: "{{ tls_dir }}/ca.pem"
+        mode: '0444'
+      delegate_to: web1
+      when: inventory_hostname != 'web1'
+
+    # Para copiar ficheros entre nodos remotos usamos fetch + copy
+    - name: Descargar ca.pem al controller (solo si no es web1)
+      ansible.builtin.fetch:
+        src: /etc/docker/tls/ca.pem
+        dest: /tmp/docker-tls/ca.pem
+        flat: yes
+      delegate_to: web1
+      run_once: true
+
+    - name: Descargar server-cert.pem al controller
+      ansible.builtin.fetch:
+        src: /etc/docker/tls/server-cert.pem
+        dest: /tmp/docker-tls/server-cert.pem
+        flat: yes
+      delegate_to: web1
+      run_once: true
+
+    - name: Descargar server-key.pem al controller
+      ansible.builtin.fetch:
+        src: /etc/docker/tls/server-key.pem
+        dest: /tmp/docker-tls/server-key.pem
+        flat: yes
+      delegate_to: web1
+      run_once: true
+
+    - name: Subir ca.pem a todos los managers
+      ansible.builtin.copy:
+        src: /tmp/docker-tls/ca.pem
+        dest: "{{ tls_dir }}/ca.pem"
+        mode: '0444'
+
+    - name: Subir server-cert.pem a todos los managers
+      ansible.builtin.copy:
+        src: /tmp/docker-tls/server-cert.pem
+        dest: "{{ tls_dir }}/server-cert.pem"
+        mode: '0444'
+
+    - name: Subir server-key.pem a todos los managers
+      ansible.builtin.copy:
+        src: /tmp/docker-tls/server-key.pem
+        dest: "{{ tls_dir }}/server-key.pem"
+        mode: '0400'
+
+    # ── Systemd override ───────────────────────────────────────────────────
+    # El unit de Docker en Debian arranca con '-H fd://' hardcodeado.
+    # Cuando daemon.json también define 'hosts', Docker falla por conflicto.
+    # El override vacía ExecStart y lo redefine sin -H, dejando que
+    # daemon.json sea la única fuente de verdad para los hosts.
+
+    - name: Crear directorio de override systemd para Docker
+      ansible.builtin.file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Escribir override systemd para eliminar -H fd://
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/docker.service.d/override.conf
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/dockerd
+        mode: '0644'
+      notify: Recargar y reiniciar Docker
+
+    # ── daemon.json ────────────────────────────────────────────────────────
+    # fd://   → socket Unix local (necesario para que el CLI funcione en el host)
+    # tcp://  → acceso remoto desde los nodos Traefik
+
+    - name: Escribir /etc/docker/daemon.json con TLS habilitado
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "tlsverify": true,
+            "tlscacert": "/etc/docker/tls/ca.pem",
+            "tlscert":   "/etc/docker/tls/server-cert.pem",
+            "tlskey":    "/etc/docker/tls/server-key.pem",
+            "hosts": ["fd://", "tcp://0.0.0.0:2376"]
+          }
+        mode: '0644'
+      notify: Recargar y reiniciar Docker
+
+    # ── Firewall: permitir 2376 solo desde la red de gestión ──────────────
+    # Solo los nodos Traefik (10.0.0.4x) necesitan llegar al puerto 2376.
+    # Se usa iptables directamente porque la imagen base no incluye ufw/firewalld.
+
+    - name: Permitir TCP 2376 desde la red de gestión (10.0.0.0/24)
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        source: "10.0.0.0/24"
+        destination_port: "2376"
+        jump: ACCEPT
+        comment: "Docker API TLS — solo red gestion-swarm"
+
+    - name: Bloquear TCP 2376 desde cualquier otra fuente
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "2376"
+        jump: DROP
+        comment: "Docker API TLS — bloquear acceso externo"
+
+    - name: Guardar reglas iptables de forma persistente
+      ansible.builtin.command: netfilter-persistent save
+      changed_when: true
+
+  handlers:
+    - name: Recargar y reiniciar Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+        daemon_reload: yes
+
+    # Tras reiniciar Docker el nodo sale del Swarm temporalmente.
+    # Swarm se reconecta solo (el manager reestablece el canal de control),
+    # pero esperamos unos segundos por si acaso.
+    - name: Esperar reconexión Swarm
+      ansible.builtin.pause:
+        seconds: 10
+      listen: Recargar y reiniciar Docker
+
+
+# ── FASE 3: Verificar que la API TLS funciona desde el controller ─────────────
+- name: Verificar acceso TLS a la Docker API
+  hosts: web1
+  become: yes
+
+  tasks:
+
+    - name: Probar conexión TLS a Docker API de web1
+      ansible.builtin.command: >
+        docker --tlsverify
+          --tlscacert /etc/docker/tls/ca.pem
+          --tlscert   /etc/docker/tls/client-cert.pem
+          --tlskey    /etc/docker/tls/client-key.pem
+          -H tcp://10.0.0.11:2376
+          info --format "{{.Swarm.NodeID}}"
+      register: tls_check
+      changed_when: false
+
+    - name: Resultado de la verificación TLS
+      ansible.builtin.debug:
+        msg: "Docker API TLS OK — NodeID: {{ tls_check.stdout }}"

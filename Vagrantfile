@@ -8,26 +8,61 @@ Vagrant.configure("2") do |config|
   SHELL
 
   # =========================================================
+  # TRAEFIK (2 Máquinas: reverse proxy HTTP — Swarm Workers)
+  # Reciben tráfico HTTP/HTTPS (192.168.56.2x).
+  # Acceden a la Docker API del manager via TCP+mTLS (10.0.0.11:2376).
+  # =========================================================
+  (1..2).each do |i|
+    config.vm.define "traefik#{i}" do |tr|
+      tr.vm.hostname = "traefik#{i}"
+
+      # Gestión Swarm + ruta a la Docker API del manager
+      tr.vm.network "private_network",
+        ip: "10.0.0.4#{i}",
+        netmask: "255.255.255.0",
+        virtualbox__intnet: "gestion-swarm"
+
+      # Data-path Swarm (overlay encriptado)
+      tr.vm.network "private_network",
+        ip: "10.10.0.4#{i}",
+        netmask: "255.255.255.0",
+        virtualbox__intnet: "datos-swarm"
+
+      # Frontend — puertos 80/443 accesibles desde el host
+      tr.vm.network "private_network", ip: "192.168.56.2#{i}"
+
+      tr.vm.provider "virtualbox" do |vb|
+        vb.name = "traefik#{i}"
+        vb.gui = false
+        vb.memory = "512"
+        vb.cpus = 1
+        vb.linked_clone = true
+        vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
+      end
+
+      tr.vm.post_up_message = "Buenas, soy el \"traefik#{i}\" (Traefik edge proxy)"
+    end
+  end
+  
+  # =========================================================
   # SERVIDORES WEB (3 Máquinas: Apache + Swarm Managers)
   # =========================================================
   (1..3).each do |i|
     config.vm.define "web#{i}" do |web|
       web.vm.hostname = "web#{i}"
 
-      # Red de gestión Swarm (Aislada)
       web.vm.network "private_network",
         ip: "10.0.0.1#{i}",
         netmask: "255.255.255.0",
         virtualbox__intnet: "gestion-swarm"
 
-      # Red Frontend
-      web.vm.network "private_network", ip: "192.168.56.1#{i}"
-
-      # Red Web-a-Proxy (Aislada): Para hablar con los HAProxy de la BD
       web.vm.network "private_network",
         ip: "10.10.0.1#{i}",
         netmask: "255.255.255.0",
-        virtualbox__intnet: "web-net"
+        virtualbox__intnet: "datos-swarm"
+
+      # Solo para admin/dashboard — el tráfico HTTP ya no entra aquí
+      web.vm.network "private_network", ip: "192.168.56.1#{i}"
 
       web.vm.provider "virtualbox" do |vb|
         vb.name = "web#{i}"
@@ -35,11 +70,8 @@ Vagrant.configure("2") do |config|
         vb.memory = "1024"
         vb.cpus = 1
         vb.linked_clone = true
-        vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
-        vb.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"] # Para frontend (eth2)
-        vb.customize ["modifyvm", :id, "--nicpromisc4", "allow-all"] # Para web-net (eth3)
-        vb.customize ["modifyvm", :id, "--nic3", "natnetwork"]
-        vb.customize ["modifyvm", :id, "--nat-network2", "ProyectoNetwork"]
+        vb.customize ["modifyvm", :id, "--nic4", "natnetwork"]
+        vb.customize ["modifyvm", :id, "--nat-network3", "ProyectoNetwork"]
       end
 
       web.vm.post_up_message = "Buenas, soy el \"web#{i}\" (Web/Swarm Manager)"
@@ -47,43 +79,32 @@ Vagrant.configure("2") do |config|
   end
 
   # =========================================================
-  # BALANCEADORES BASE DE DATOS (2 Máquinas: HAProxy + Keepalived)
+  # BALANCEADORES MySQL (2 Máquinas: HAProxy L4 para Galera)
   # =========================================================
   (1..2).each do |i|
     config.vm.define "lb#{i}" do |lb|
       lb.vm.hostname = "lb#{i}"
 
-      # Red de gestión Swarm
       lb.vm.network "private_network",
         ip: "10.0.0.2#{i}",
         netmask: "255.255.255.0",
         virtualbox__intnet: "gestion-swarm"
 
-      # Red Web-a-Proxy: Escucha las peticiones SQL que manda Apache
-      # (Aquí configuraremos la VIP de Keepalived en la IP 10.10.0.200)
       lb.vm.network "private_network",
         ip: "10.10.0.2#{i}",
         netmask: "255.255.255.0",
-        virtualbox__intnet: "web-net"
-
-      # Red Backend: Envía el tráfico redirigido hacia el clúster MariaDB
-      lb.vm.network "private_network",
-        ip: "10.10.10.2#{i}",
-        netmask: "255.255.255.0",
-        virtualbox__intnet: "backend-net"
+        virtualbox__intnet: "datos-swarm"
 
       lb.vm.provider "virtualbox" do |vb|
         vb.name = "lb#{i}"
         vb.gui = false
-        vb.memory = "512" # Ultra ligero para HAProxy
+        vb.memory = "512"
         vb.cpus = 1
         vb.linked_clone = true
-        vb.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"] # Para web-net (eth2)
-        vb.customize ["modifyvm", :id, "--nicpromisc4", "allow-all"] # Para backend-net (eth3)
         vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
       end
 
-      lb.vm.post_up_message = "Buenas, soy el \"lb#{i}\" (HAProxy/Keepalived)"
+      lb.vm.post_up_message = "Buenas, soy el \"lb#{i}\" (HAProxy MySQL)"
     end
   end
 
@@ -94,25 +115,22 @@ Vagrant.configure("2") do |config|
     config.vm.define "db#{i}" do |db|
       db.vm.hostname = "db#{i}"
 
-      # Red de gestión Swarm
       db.vm.network "private_network",
         ip: "10.0.0.3#{i}",
         netmask: "255.255.255.0",
         virtualbox__intnet: "gestion-swarm"
 
-      # Red Backend: Recibe consultas de HAProxy y ejecuta replicación interna Galera
       db.vm.network "private_network",
-        ip: "10.10.10.3#{i}",
+        ip: "10.10.0.3#{i}",
         netmask: "255.255.255.0",
-        virtualbox__intnet: "backend-net"
+        virtualbox__intnet: "datos-swarm"
 
       db.vm.provider "virtualbox" do |vb|
         vb.name = "db#{i}"
         vb.gui = false
-        vb.memory = "2048" # 2 GB de RAM para que MariaDB respire bien
-        vb.cpus = 1        # 1 vCPU para no saturar tu host
+        vb.memory = "2048"
+        vb.cpus = 1
         vb.linked_clone = true
-        vb.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"] # Para backend-net (eth2)
         vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
       end
 
