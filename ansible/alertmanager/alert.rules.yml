@@ -16,10 +16,6 @@ groups:
 
     rules:
 
-      # ── Scale UP ───────────────────────────────────────────────────────────
-      # CPU media de los contenedores web > 70% durante 2 minutos.
-      # Usamos irate (instantaneous rate) para detectar picos rápidos.
-      # El label swarm_service filtra solo el servicio 'app_web'.
       - alert: WebHighCpu
         expr: |
           avg(
@@ -48,7 +44,7 @@ groups:
       - alert: WebLowCpu
         expr: |
           avg(
-            irate(
+            rate(
               container_cpu_usage_seconds_total{
                 container_label_com_docker_swarm_service_name="app_web",
                 id!="/"

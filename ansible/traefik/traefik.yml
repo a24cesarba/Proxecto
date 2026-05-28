@@ -30,22 +30,12 @@ providers:
     # Puerto 2376 es el estándar para Docker API con TLS.
     # Si web1 cae, Traefik sigue sirviendo tráfico con la config en caché
     # pero no descubrirá nuevos servicios hasta que la API esté disponible.
-    endpoint: "tcp://10.0.0.11:2376"
-
-    tls:
-      # Certificados inyectados por Docker Swarm desde los secrets:
-      #   docker_client_ca   → /run/secrets/docker_client_ca
-      #   docker_client_cert → /run/secrets/docker_client_cert
-      #   docker_client_key  → /run/secrets/docker_client_key
-      ca:                /run/secrets/docker_client_ca
-      cert:              /run/secrets/docker_client_cert
-      key:               /run/secrets/docker_client_key
-      insecureSkipVerify: false    # verificar el cert del servidor siempre
+    endpoint: "tcp://socket-proxy:2375" 
+    tls: {}
 
     swarmMode: true
     swarmModeRefreshSeconds: 15
-    exposedByDefault: false        # solo servicios con traefik.enable=true
-    # Nombre real de la red overlay en Swarm: <stack>_<red>
+    exposedByDefault: false
     network: app_proxy_web
 
 log:
