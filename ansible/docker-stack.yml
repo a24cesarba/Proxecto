@@ -24,7 +24,8 @@ secrets:
     external: true
   db_galera_password:
     external: true
-  # Certificados mTLS para que Traefik autentique la Docker API
+  db_app_password:
+    external: true
   docker_client_ca:
     external: true
   docker_client_cert:
@@ -44,10 +45,7 @@ volumes:
 
 services:
 
-  # ── Traefik (reverse proxy HTTP/HTTPS) ───────────────────────────────────
-  # Colocado en los nodos traefik1/traefik2 (role=traefik).
-  # Sin socket mount: accede a la Docker API via TCP+mTLS usando los secrets.
-  # Publica los puertos 80/443 en modo host (IP real del cliente preservada).
+  # ── Traefik ───────────────────────────────────────────────────────────────
   traefik:
     image: traefik:v3.0
     networks:
@@ -78,7 +76,7 @@ services:
       replicas: 2
       placement:
         constraints:
-          - node.labels.role == traefik   # exclusivo en traefik1/traefik2
+          - node.labels.role == traefik
         preferences:
           - spread: node.id
       resources:
@@ -99,24 +97,32 @@ services:
       labels:
         - "traefik.enable=false"
 
-  # ── Apache httpd ──────────────────────────────────────────────────────────
-  # Sin puertos publicados en el host. Solo accesible via proxy_web overlay.
+  # ── Servicio web ──────────────────────────────────────────
   web:
-    image: httpd:2.4
+    image: tu-registro/tu-app:latest
     networks:
-      - proxy_web
-      - app_db
+      - proxy_web 
+      - app_db 
+    secrets:
+      - db_app_password  
+    environment:
+      # Conexión a MariaDB Galera a través de HAProxy
+      DB_HOST: "lb"
+      DB_PORT: "3306"
+      DB_NAME: "app"
+      DB_USER: "app"
+      UPLOAD_DIR: "/app/almacenamiento"
     volumes:
       - type: bind
         source: /mnt/almacenamiento_compartido
-        target: /var/www/html/uploads
+        target: /app/almacenamiento
         read_only: false
     deploy:
       mode: replicated
       replicas: 3
       placement:
         constraints:
-          - node.role == manager
+          - node.role == manager       
       resources:
         limits:
           memory: 256M
@@ -142,7 +148,7 @@ services:
         - "traefik.http.routers.web.rule=PathPrefix(`/`)"
         - "traefik.http.routers.web.entrypoints=web"
         - "traefik.http.services.web.loadbalancer.server.port=80"
-        - "traefik.http.services.web.loadbalancer.healthcheck.path=/server-status"
+        - "traefik.http.services.web.loadbalancer.healthcheck.path=/health"
         - "traefik.http.services.web.loadbalancer.healthcheck.interval=10s"
         - "traefik.http.services.web.loadbalancer.healthcheck.timeout=3s"
         - "autoscale.service=app_web"
@@ -193,9 +199,13 @@ services:
     secrets:
       - db_root_password
       - db_galera_password
+      - db_app_password
     environment:
       MYSQL_ROOT_PASSWORD_FILE:   /run/secrets/db_root_password
       GALERA_SST_PASSWORD_FILE:   /run/secrets/db_galera_password
+      APP_DB_PASSWORD_FILE:       /run/secrets/db_app_password   # ← NUEVO
+      APP_DB_NAME:                app                            # ← NUEVO
+      APP_DB_USER:                app                            # ← NUEVO
       GALERA_CLUSTER_NAME:        galera_cluster
       GALERA_CLUSTER_ADDRESS:     gcomm://app_db
       GALERA_CLUSTER_SERVICE:     app_db
@@ -228,3 +238,4 @@ services:
         parallelism: 1
         delay: 30s
         order: stop-first
+        

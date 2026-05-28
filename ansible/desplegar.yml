@@ -22,12 +22,18 @@
       private: yes
       confirm: yes
 
+    - name: db_app_password
+      prompt: |
+
+        Contraseña del usuario de aplicación en MariaDB
+        (se usará para crear el secreto Docker 'db_app_password')
+        Usuario que se creará: app  /  Base de datos: app
+      private: yes
+      confirm: yes
+
   tasks:
 
     # ── Secretos ──────────────────────────────────────────────────────────────
-    # Los secretos Docker se crean una sola vez. Si ya existen, se omite la
-    # creación. Para rotar una contraseña hay que borrar el secreto manualmente
-    # (docker secret rm <nombre>) y volver a ejecutar este playbook.
 
     - name: Comprobar si el secreto db_root_password ya existe
       ansible.builtin.command: docker secret inspect db_root_password
@@ -38,7 +44,7 @@
     - name: Crear secreto db_root_password
       ansible.builtin.shell: "printf '%s' '{{ db_root_password }}' | docker secret create db_root_password -"
       when: secret_root_check.rc != 0
-      no_log: true   # no mostrar la contraseña en los logs de Ansible
+      no_log: true
 
     - name: Comprobar si el secreto db_galera_password ya existe
       ansible.builtin.command: docker secret inspect db_galera_password
@@ -51,10 +57,18 @@
       when: secret_galera_check.rc != 0
       no_log: true
 
+    - name: Comprobar si el secreto db_app_password ya existe
+      ansible.builtin.command: docker secret inspect db_app_password
+      register: secret_app_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear secreto db_app_password
+      ansible.builtin.shell: "printf '%s' '{{ db_app_password }}' | docker secret create db_app_password -"
+      when: secret_app_check.rc != 0
+      no_log: true
+
     # ── Config de HAProxy ─────────────────────────────────────────────────────
-    # Los configs Docker funcionan igual que los secretos pero para ficheros
-    # de configuración no sensibles. haproxy.cfg se inyecta en el contenedor
-    # lb en tiempo de ejecución sin necesidad de montar volúmenes.
 
     - name: Copiar haproxy.cfg al nodo leader
       ansible.builtin.copy:
@@ -72,8 +86,19 @@
       ansible.builtin.command: docker config create haproxy_cfg /tmp/haproxy.cfg
       when: config_haproxy_check.rc != 0
 
+    - name: Advertir si haproxy_cfg ya existe
+      ansible.builtin.debug:
+        msg: >
+          AVISO: el config 'haproxy_cfg' ya existe en el clúster.
+          Si modificaste haproxy.cfg, rota el config manualmente:
+            docker config create haproxy_cfg_v2 /tmp/haproxy.cfg
+            docker service update --config-rm haproxy_cfg
+              --config-add source=haproxy_cfg_v2,target=/usr/local/etc/haproxy/haproxy.cfg
+              app_lb
+      when: config_haproxy_check.rc == 0
 
-      # ── Config de Traefik ─────────────────────────────────────────────────────
+    # ── Config de Traefik ─────────────────────────────────────────────────────
+
     - name: Copiar traefik.yml al nodo leader
       ansible.builtin.copy:
         src: ./traefik/traefik.yml
@@ -90,7 +115,7 @@
       ansible.builtin.command: docker config create traefik_cfg /tmp/traefik.yml
       when: config_traefik_check.rc != 0
 
-    - name: Advertir si traefik_cfg ya existe (cambios requieren rotación manual)
+    - name: Advertir si traefik_cfg ya existe
       ansible.builtin.debug:
         msg: >
           AVISO: el config 'traefik_cfg' ya existe en el clúster.
@@ -100,20 +125,6 @@
               --config-add source=traefik_cfg_v2,target=/etc/traefik/traefik.yml
               app_traefik
       when: config_traefik_check.rc == 0
-
-    # Si haproxy.cfg cambió y el config ya existe, hay que rotarlo.
-    # La rotación de configs Docker requiere crear uno nuevo con distinto nombre
-    # y actualizar el servicio. Esta tarea lo detecta y avisa.
-    - name: Advertir si haproxy_cfg ya existe (cambios en haproxy.cfg requieren rotación manual)
-      ansible.builtin.debug:
-        msg: >
-          AVISO: el config 'haproxy_cfg' ya existe en el clúster.
-          Si modificaste haproxy.cfg, debes rotar el config manualmente:
-            docker config create haproxy_cfg_v2 /tmp/haproxy.cfg
-            docker service update --config-rm haproxy_cfg
-              --config-add source=haproxy_cfg_v2,target=/usr/local/etc/haproxy/haproxy.cfg
-              app_lb
-      when: config_haproxy_check.rc == 0
 
     # ── Stack file ────────────────────────────────────────────────────────────
 
@@ -130,13 +141,6 @@
         mode: '0644'
 
     # ── Despliegue ────────────────────────────────────────────────────────────
-    # docker stack deploy es idempotente: si el stack ya existe, actualiza
-    # únicamente los servicios que hayan cambiado en el yml.
-    # En el primer despliegue:
-    #   - db1 detecta datadir vacío + hostname == GALERA_BOOTSTRAP_NODE → bootstrap
-    #   - db2 y db3 esperan hasta 120s a que el puerto 4567 de app_db sea
-    #     accesible, luego hacen join
-    #   - web y lb arrancan normalmente
 
     - name: Desplegar stack 'app'
       ansible.builtin.command:
@@ -150,8 +154,6 @@
       ansible.builtin.debug:
         msg: "{{ stack_result.stdout_lines }}"
 
-    # Espera a que los servicios arranquen antes de mostrar el estado.
-    # Galera necesita tiempo para bootstrap + join, de ahí los 30s.
     - name: Esperar 30 segundos a que los servicios inicialicen
       ansible.builtin.pause:
         seconds: 30
@@ -166,3 +168,4 @@
     - name: Estado final
       ansible.builtin.debug:
         msg: "{{ services_status.stdout_lines }}"
+        

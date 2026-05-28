@@ -58,7 +58,6 @@
       when: inventory_hostname == 'web1'
       register: vol_create
       changed_when: "'success' in vol_create.stdout"
-      # Si dice "already exists", ignoramos el error para mantener la idempotencia
       failed_when: "'Failed' in vol_create.stderr and 'already exists' not in vol_create.stderr"
 
     - name: Iniciar el volumen de GlusterFS

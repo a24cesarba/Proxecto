@@ -1,21 +1,4 @@
 ---
-# =============================================================================
-# docker-tls.yml — Configurar acceso remoto seguro a la Docker API
-#
-# Ejecutar UNA VEZ, antes de desplegar el stack, justo después de swarm.yml:
-#   ansible-playbook docker-tls.yml
-#
-# Qué hace este playbook:
-#   1. Genera una CA privada en web1 (válida 10 años)
-#   2. Firma un certificado de servidor con SAN para las IPs de los 3 managers
-#   3. Configura dockerd en todos los managers para escuchar en TCP:2376 con mTLS
-#   4. Genera un certificado de cliente firmado por la misma CA
-#   5. Crea los Docker secrets 'docker_client_ca', 'docker_client_cert',
-#      'docker_client_key' para que Traefik los use desde /run/secrets/
-#
-# Los certificados se guardan en /etc/docker/tls/ en los managers.
-# Las claves privadas tienen permisos 0400 (solo root).
-# =============================================================================
 
 # ── FASE 1: Generar certificados en web1 (el manager líder) ──────────────────
 - name: Generar CA y certificados TLS en el manager líder
@@ -23,7 +6,6 @@
   become: yes
   vars:
     tls_dir: /etc/docker/tls
-    # IPs de los managers — deben coincidir con eth1 del Vagrantfile
     manager_ips:
       - "10.0.0.11"
       - "10.0.0.12"
@@ -239,16 +221,6 @@
         state: directory
         mode: '0700'
 
-    # Solo web2 y web3 necesitan copiar los certs — web1 ya los tiene.
-    - name: Copiar CA desde web1 a este manager
-      ansible.builtin.copy:
-        src: "/etc/docker/tls/ca.pem"   # Ansible busca esto en el nodo remoto web1
-        dest: "{{ tls_dir }}/ca.pem"
-        mode: '0444'
-      delegate_to: web1
-      when: inventory_hostname != 'web1'
-
-    # Para copiar ficheros entre nodos remotos usamos fetch + copy
     - name: Descargar ca.pem al controller (solo si no es web1)
       ansible.builtin.fetch:
         src: /etc/docker/tls/ca.pem
