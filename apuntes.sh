@@ -53,3 +53,4 @@ ansible-playbook swarm.yml
 ansible-playbook iptables.yml
 ansible-playbook docker-tls.yml
 ansible-playbook desplegar.yml
+ansible-playbook desplegar-monitoring.yml

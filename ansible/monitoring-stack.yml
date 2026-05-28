@@ -183,23 +183,23 @@ services:
         condition: on-failure
         delay: 5s
 
-socket-proxy:
-    image: tecnativa/docker-socket-proxy:0.3.0
-    networks:
-      - monitoring
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      SERVICES: 1     # GET /services
-      TASKS: 1        # GET /tasks
-      NETWORKS: 1     # GET /networks
-      NODES: 1        # GET /nodes
-      # Todo lo demás queda en 0 (denegado por defecto)
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: on-failure
+  socket-proxy:
+      image: tecnativa/docker-socket-proxy:0.3.0
+      networks:
+        - monitoring
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock:ro
+      environment:
+        SERVICES: 1     # GET /services
+        TASKS: 1        # GET /tasks
+        NETWORKS: 1     # GET /networks
+        NODES: 1        # GET /nodes
+        # Todo lo demás queda en 0 (denegado por defecto)
+      deploy:
+        mode: replicated
+        replicas: 1
+        placement:
+          constraints:
+            - node.role == manager
+        restart_policy:
+          condition: on-failure

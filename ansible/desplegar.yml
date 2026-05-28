@@ -72,6 +72,35 @@
       ansible.builtin.command: docker config create haproxy_cfg /tmp/haproxy.cfg
       when: config_haproxy_check.rc != 0
 
+
+      # ── Config de Traefik ─────────────────────────────────────────────────────
+    - name: Copiar traefik.yml al nodo leader
+      ansible.builtin.copy:
+        src: ./traefik/traefik.yml
+        dest: /tmp/traefik.yml
+        mode: '0644'
+
+    - name: Comprobar si el config traefik_cfg ya existe
+      ansible.builtin.command: docker config inspect traefik_cfg
+      register: config_traefik_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear config traefik_cfg
+      ansible.builtin.command: docker config create traefik_cfg /tmp/traefik.yml
+      when: config_traefik_check.rc != 0
+
+    - name: Advertir si traefik_cfg ya existe (cambios requieren rotación manual)
+      ansible.builtin.debug:
+        msg: >
+          AVISO: el config 'traefik_cfg' ya existe en el clúster.
+          Si modificaste traefik.yml, rota el config manualmente:
+            docker config create traefik_cfg_v2 /tmp/traefik.yml
+            docker service update --config-rm traefik_cfg
+              --config-add source=traefik_cfg_v2,target=/etc/traefik/traefik.yml
+              app_traefik
+      when: config_traefik_check.rc == 0
+
     # Si haproxy.cfg cambió y el config ya existe, hay que rotarlo.
     # La rotación de configs Docker requiere crear uno nuevo con distinto nombre
     # y actualizar el servicio. Esta tarea lo detecta y avisa.
