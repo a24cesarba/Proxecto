@@ -1,17 +1,7 @@
 <?php
 if (isset($_GET['rexistrar'])) {
-    $servidor = "db";
-    $usuario = "tarefa";
-    $passwd = "Tarefa5.7";
-    $base = "tarefa5.7";
-    try {
-        //CONECTAMOS
-        $pdo = new PDO("mysql:host=$servidor;dbname=$base;charset=utf8mb4", $usuario, $passwd);
-        //Para xerar excepcións cando se informe dun erro
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    } catch (Exception $e) {
-        echo "Erro ao conectar co servidor MySQL: " . $e->getMessage();
-    }
+    require_once 'db.php';
+    $pdo = getDbConnection();
     $pdoStatement = $pdo->prepare("INSERT into usuarios values(:nome, :contrasinal, :completo, :email, :datacreacion, :rol)");
 
     $nomestrip = strip_tags($_GET['usuario']);

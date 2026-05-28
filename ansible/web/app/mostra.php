@@ -1,4 +1,5 @@
 <?php
+require_once 'session_db.php';
 session_start();
 
 if (!isset($_SESSION["usuario"])) {
@@ -14,17 +15,7 @@ if (isset($_GET["comentado"])) {
     }
 }
 
-$servidor = "db";
-$usuario = "tarefa";
-$passwd = "Tarefa5.7";
-$base = "tarefa5.7";
-
-try {
-    $pdo = new PDO("mysql:host=$servidor;dbname=$base;charset=utf8mb4", $usuario, $passwd);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (Exception $e) {
-    die("Erro ao conectar: " . $e->getMessage());
-}
+$pdo = getDbConnection();
 
 $productos = $pdo->query("SELECT * FROM produto");
 ?>
@@ -108,7 +99,7 @@ $productos = $pdo->query("SELECT * FROM produto");
 
             // IZQUIERDA
             echo "<div class='intizq'>
-        <img src='./imaxes/{$fila['imaxe']}'><br>
+        <img src='/app/almacenamiento/{$fila['imaxe']}'><br>
         <p><b>ID:</b> {$fila['idProduto']}</p>
         <p><b>Nome:</b> {$fila['nome']}</p>
         <p><b>Descrición:</b> {$fila['descricion']}</p>
@@ -134,6 +125,7 @@ $productos = $pdo->query("SELECT * FROM produto");
 
             echo "</div>
         <a href='comenta.php?id={$fila['idProduto']}'><button>Engadir comentario</button></a>
+        <a href='imaxe.php'><button>Engadir imaxe</button></a>
     </div>";
 
             echo "</div>";

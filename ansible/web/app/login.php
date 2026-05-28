@@ -1,4 +1,5 @@
 <?php
+require_once 'session_db.php';
 session_start();
 if (isset($_GET["erro"])) {
     if ($_GET['erro'] == 1) {

@@ -1,18 +1,11 @@
-<?php session_start();
+<?php 
+require_once 'session_db.php';
+session_start();
 if (!isset($_GET['id'])) {
     header("Location:login.php");
 }
 if (isset($_GET['comentar'])) {
-    $servidor = "db";
-    $usuario = "tarefa";
-    $passwd = "Tarefa5.7";
-    $base = "tarefa5.7";
-    try {//CONECTAMOS
-        $pdo = new PDO("mysql:host=$servidor;dbname=$base;charset=utf8mb4", $usuario, $passwd);//Para xerar excepcións cando se informe dun erro
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    } catch (Exception $e) {
-        echo "Erro ao conectar co servidor MySQL: " . $e->getMessage();
-    }
+    $pdo = getDbConnection();
     try {
         $pdoStatement = $pdo->prepare("INSERT into comentarios(usuario, idProduto, Comentario, dataCreación) values (:usuario, :idProduto, :comentario, :dataCreacion)");
         $usuario = $_SESSION["usuario"];

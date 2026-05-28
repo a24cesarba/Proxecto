@@ -99,7 +99,7 @@ services:
 
   # ── Servicio web ──────────────────────────────────────────
   web:
-    image: tu-registro/tu-app:latest
+    image: a24cesarba/app-web:latest
     networks:
       - proxy_web 
       - app_db 
