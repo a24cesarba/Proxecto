@@ -34,7 +34,7 @@
 # Se pone política ACCEPT antes de limpiar para no cortarse el SSH.
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Resetear iptables a estado limpio en todos los nodos
-  hosts: todos
+  hosts: all
   become: yes
   tasks:
 

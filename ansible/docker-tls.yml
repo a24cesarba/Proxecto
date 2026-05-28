@@ -331,31 +331,6 @@
         mode: '0644'
       notify: Recargar y reiniciar Docker
 
-    # ── Firewall: permitir 2376 solo desde la red de gestión ──────────────
-    # Solo los nodos Traefik (10.0.0.4x) necesitan llegar al puerto 2376.
-    # Se usa iptables directamente porque la imagen base no incluye ufw/firewalld.
-
-    - name: Permitir TCP 2376 desde la red de gestión (10.0.0.0/24)
-      ansible.builtin.iptables:
-        chain: INPUT
-        protocol: tcp
-        source: "10.0.0.0/24"
-        destination_port: "2376"
-        jump: ACCEPT
-        comment: "Docker API TLS — solo red gestion-swarm"
-
-    - name: Bloquear TCP 2376 desde cualquier otra fuente
-      ansible.builtin.iptables:
-        chain: INPUT
-        protocol: tcp
-        destination_port: "2376"
-        jump: DROP
-        comment: "Docker API TLS — bloquear acceso externo"
-
-    - name: Guardar reglas iptables de forma persistente
-      ansible.builtin.command: netfilter-persistent save
-      changed_when: true
-
   handlers:
     - name: Recargar y reiniciar Docker
       ansible.builtin.systemd:

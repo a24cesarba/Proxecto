@@ -69,7 +69,7 @@ services:
         order: start-first
 
   # ── Prometheus ────────────────────────────────────────────────────────────
-  # Scrape cAdvisor en todos los nodos via dockerswarm_sd.
+  # Scrape cAdvisor en los nodos via dockerswarm_sd.
   # Evalúa reglas de alerta (alert.rules.yml) y envía disparos a Alertmanager.
   # Solo en nodos manager para acceso al Docker socket.
   prometheus:
