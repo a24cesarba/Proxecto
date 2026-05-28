@@ -19,8 +19,10 @@ if (isset($_GET['comentar'])) {
         $pdoStatement->execute();
     } catch (Exception $e) {
         header("Location:mostra.php?comentado=2");
+        exit;
     }
     header("Location:mostra.php?comentado=1");
+    exit;
 } ?>
 <!DOCTYPE html>
 <html lang="es">

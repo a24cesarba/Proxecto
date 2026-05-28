@@ -63,7 +63,7 @@
 # PLAY 2 — Reglas INPUT base comunes a TODOS los nodos
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Reglas INPUT base (todos los nodos)
-  hosts: todos
+  hosts: all
   become: yes
   tasks:
 
@@ -318,7 +318,7 @@
 # reglas de Docker.
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Reglas DOCKER-USER para servicios mode:ingress (todos los nodos)
-  hosts: todos
+  hosts: all
   become: yes
   tasks:
 
@@ -399,7 +399,7 @@
 # Se hace AL FINAL, después de que todas las reglas ACCEPT están en su lugar.
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Aplicar política DROP y guardar reglas (todos los nodos)
-  hosts: todos
+  hosts: all
   become: yes
   tasks:
 

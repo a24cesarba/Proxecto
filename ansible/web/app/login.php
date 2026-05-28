@@ -127,7 +127,7 @@ if (isset($_GET["erro"])) {
     <div class="contenedor">
 
         <h1>Formulario de inicio de sesión</h1>
-        <form action="validalogin.php" meethod="get">
+        <form action="validalogin.php" method="get">
             <label for="usuario">Nome de usuario: </label>
             <input type="text" name="usuario"><br>
             <label for="contrasinal">Contrasinal: </label>

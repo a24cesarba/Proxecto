@@ -99,7 +99,7 @@ $productos = $pdo->query("SELECT * FROM produto");
 
             // IZQUIERDA
             echo "<div class='intizq'>
-        <img src='/app/almacenamiento/{$fila['imaxe']}'><br>
+        <img src='/almacenamento/{$fila['imaxe']}'><br>
         <p><b>ID:</b> {$fila['idProduto']}</p>
         <p><b>Nome:</b> {$fila['nome']}</p>
         <p><b>Descrición:</b> {$fila['descricion']}</p>

@@ -19,6 +19,9 @@ networks:
     driver_opts:
       encrypted: "true"
 
+  monitoring:
+    external: true
+
 secrets:
   db_root_password:
     external: true
@@ -50,6 +53,7 @@ services:
     image: traefik:v3.0
     networks:
       - proxy_web
+      - monitoring
     ports:
       - target: 80
         published: 80
