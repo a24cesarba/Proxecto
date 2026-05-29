@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# =============================================================================
-# /docker-entrypoint-initdb.d/01-sst-user.sh
-#
-# Runs ONCE during the very first container start (empty datadir) via the
-# official MariaDB docker-entrypoint.sh mechanism. Creates the Galera SST
-# user that mariabackup uses for state transfers between nodes.
-#
-# Runs before Galera is active, so no cluster communication happens here.
-# =============================================================================
 set -euo pipefail
 
 SST_USER="${GALERA_SST_USER:-galera_sst}"

@@ -1,3 +1,15 @@
+[todos]
+web1
+web2
+web3
+traefik1
+traefik2
+lb1
+lb2
+db1
+db2
+db3
+
 [managers]
 web1
 web2

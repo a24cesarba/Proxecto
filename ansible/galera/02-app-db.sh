@@ -67,12 +67,6 @@ CREATE TABLE IF NOT EXISTS comentarios (
         REFERENCES usuarios (nome) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Imágenes subidas (imaxe.php)
-CREATE TABLE IF NOT EXISTS imagenes (
-    idImaxe        INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    nombre_archivo VARCHAR(255) NOT NULL,
-    datacreacion   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Usuario de aplicación
 CREATE USER IF NOT EXISTS '${APP_USER}'@'%'

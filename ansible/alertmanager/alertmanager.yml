@@ -55,12 +55,3 @@ receivers:
         http_config:
           timeout: 10s
 
-  # Ejemplo de receptor de email (requiere configurar global.smtp_*)
-  # - name: 'ops-email'
-  #   email_configs:
-  #     - to: 'ops@tudominio.com'
-  #       from: 'alertmanager@tudominio.com'
-  #       smarthost: 'smtp.tudominio.com:587'
-  #       auth_username: 'alertmanager@tudominio.com'
-  #       auth_password: 'SECRET'
-  #       require_tls: true

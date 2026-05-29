@@ -1,7 +1,33 @@
-Host web1
+Host traefik1
   HostName 127.0.0.1
   User vagrant
   Port 2222
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/traefik1/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host traefik2
+  HostName 127.0.0.1
+  User vagrant
+  Port 2200
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile /home/cesar/Proxecto/.vagrant/machines/traefik2/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+Host web1
+  HostName 127.0.0.1
+  User vagrant
+  Port 2201
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
@@ -14,7 +40,7 @@ Host web1
 Host web2
   HostName 127.0.0.1
   User vagrant
-  Port 2200
+  Port 2202
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
@@ -27,7 +53,7 @@ Host web2
 Host web3
   HostName 127.0.0.1
   User vagrant
-  Port 2201
+  Port 2203
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
@@ -40,7 +66,7 @@ Host web3
 Host lb1
   HostName 127.0.0.1
   User vagrant
-  Port 2202
+  Port 2204
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
@@ -53,7 +79,7 @@ Host lb1
 Host lb2
   HostName 127.0.0.1
   User vagrant
-  Port 2203
+  Port 2205
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
@@ -66,7 +92,7 @@ Host lb2
 Host db1
   HostName 127.0.0.1
   User vagrant
-  Port 2204
+  Port 2206
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
@@ -79,7 +105,7 @@ Host db1
 Host db2
   HostName 127.0.0.1
   User vagrant
-  Port 2205
+  Port 2207
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no
@@ -92,7 +118,7 @@ Host db2
 Host db3
   HostName 127.0.0.1
   User vagrant
-  Port 2206
+  Port 2208
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   PasswordAuthentication no

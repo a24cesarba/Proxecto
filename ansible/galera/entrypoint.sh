@@ -1,35 +1,5 @@
 #!/usr/bin/env bash
-# =============================================================================
-# galera-entrypoint.sh
-#
-# Wraps the official MariaDB docker-entrypoint.sh with Galera bootstrap logic.
-# Determines at startup whether this node should:
-#   (a) bootstrap a new cluster  →  mariadbd --wsrep-new-cluster
-#   (b) join an existing cluster →  mariadbd (Galera handles peer sync)
-#
-# Decision tree:
-#   1. grastate.dat exists AND safe_to_bootstrap=1  → bootstrap
-#      (This node was the last to shut down cleanly — it has the latest data)
-#   2. grastate.dat exists AND safe_to_bootstrap=0  → join
-#      (Another node has more recent data; SST/IST will sync us)
-#   3. Empty datadir AND hostname == GALERA_BOOTSTRAP_NODE → bootstrap
-#      (Fresh cluster deployment — designated seed node goes first)
-#   4. Empty datadir AND hostname != GALERA_BOOTSTRAP_NODE → wait, then join
-#      (Let the seed form the cluster before we try to connect)
-#   5. Datadir not empty but no grastate.dat → join + expect forced SST
-#      (Crashed mid-init; cluster will force a full state transfer)
-#
-# Environment variables:
-#   MYSQL_ROOT_PASSWORD_FILE     Secret file path  (default: /run/secrets/db_root_password)
-#   GALERA_SST_PASSWORD_FILE     Secret file path  (default: /run/secrets/db_galera_password)
-#   GALERA_CLUSTER_NAME          Cluster name      (default: galera_cluster)
-#   GALERA_CLUSTER_ADDRESS       gcomm:// address  (default: gcomm://app_db)
-#   GALERA_CLUSTER_SERVICE       Service name for reachability check (default: app_db)
-#   GALERA_BOOTSTRAP_NODE        Seed node hostname on fresh deploy  (default: db1)
-#   GALERA_SST_USER              SST username      (default: galera_sst)
-#   GALERA_NODE_ADDRESS          Override auto-detected overlay IP   (optional)
-#   GALERA_NODE_NAME             Override container hostname         (optional)
-# =============================================================================
+
 set -euo pipefail
 
 # ── Logging ───────────────────────────────────────────────────────────────────

@@ -9,6 +9,9 @@ if (!isset($_SESSION['usuario'])) {
 }
 
 $mensaje = "";
+$nomeph = "NovoNome";
+$descph = "NovaDesc";
+$famph = "NovaFam";
 
 // Si se ha enviado el formulario para subir la imagen
 if (isset($_POST['subir'])) {
@@ -29,7 +32,10 @@ if (isset($_POST['subir'])) {
             $pdo = getDbConnection();
             try {
                 // ATENCIÓN: Cambia 'imagenes' y 'nombre_archivo' por los nombres reales de tu tabla y columna
-                $pdoStatement = $pdo->prepare("INSERT INTO imagenes (nombre_archivo) VALUES (:nombre)");
+                $pdoStatement = $pdo->prepare("INSERT INTO produto (nome,descricion,familia,imaxe) VALUES (:nomeprod,:descripcion,:familia,:nombre)");
+                $pdoStatement->bindParam(":nomeprod", $nomeph);
+                $pdoStatement->bindParam(":descripcion", $descph);
+                $pdoStatement->bindParam(":familia", $famph);
                 $pdoStatement->bindParam(":nombre", $nombreArchivo);
                 $pdoStatement->execute();
                 

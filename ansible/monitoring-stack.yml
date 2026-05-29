@@ -5,26 +5,32 @@ version: "3.8"
 # Desplegarlo DESPUÉS del stack principal 'app':
 #   docker stack deploy -c monitoring-stack.yml monitoring
 #
+# PREREQUISITO: la red overlay 'monitoring' debe existir antes de desplegar
+# tanto este stack como el stack 'app' (que también la referencia como externa).
+# Crearla una sola vez: docker network create --driver overlay monitoring
+#
 # Componentes:
-#   cadvisor    — métricas de contenedores (global: un pod por nodo)
-#   prometheus  — scraping + evaluación de reglas de alerta
-#   alertmanager — routing de alertas → webhook autoscaler
-#   autoscaler  — webhook receiver que llama a la Docker API para escalar
+#   socket-proxy  — proxy HTTP del Docker socket (lectura) para Traefik y Prometheus
+#   cadvisor      — métricas de contenedores (global: un pod por nodo)
+#   prometheus    — scraping + evaluación de reglas de alerta
+#   alertmanager  — routing de alertas → webhook autoscaler
+#   autoscaler    — webhook receiver que llama a la Docker API para escalar
 # =============================================================================
 
 networks:
-  # Red compartida con el stack 'app' para que Prometheus pueda scrape Traefik
-  # Debe crearse externamente: docker network create --driver overlay monitoring
+  # Red compartida con el stack 'app' para que Prometheus pueda scrapear Traefik
+  # y para que Traefik pueda llegar al socket-proxy.
+  # Debe existir antes del primer 'docker stack deploy' de cualquiera de los dos stacks.
   monitoring:
     external: true
 
 configs:
   prometheus_cfg:
-    external: true     # creado en desplegar.yml con el fichero prometheus.yml
+    external: true
   alertmanager_cfg:
-    external: true     # creado con alertmanager.yml
+    external: true
   alert_rules_cfg:
-    external: true     # creado con alert.rules.yml
+    external: true
 
 volumes:
   prometheus_data:
@@ -34,10 +40,43 @@ volumes:
 
 services:
 
+  # ── socket-proxy ──────────────────────────────────────────────────────────
+  # Expone el Docker socket como HTTP plano en :2375 con permisos mínimos.
+  # Lo usan:
+  #   - Traefik (stack app)    → descubrimiento de servicios Swarm
+  #   - Prometheus             → dockerswarm_sd_configs (service/task discovery)
+  #
+  # IMPORTANTE: este servicio NO concede permisos de escritura,
+  # por eso el autoscaler sigue montando el socket directamente (ver más abajo).
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    networks:
+      - monitoring
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      SERVICES: 1     # GET /services  — necesario para Traefik SD y Prometheus SD
+      TASKS:    1     # GET /tasks     — necesario para Traefik SD y Prometheus SD
+      NETWORKS: 1     # GET /networks  — necesario para Traefik SD
+      NODES:    1     # GET /nodes     — necesario para Prometheus dockerswarm_sd
+      # El resto de endpoints permanece denegado (0 por defecto)
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 16M
+      restart_policy:
+        condition: on-failure
+
   # ── cAdvisor ─────────────────────────────────────────────────────────────
   # Expone métricas de cada contenedor en :8080/metrics.
   # Mode global: se ejecuta en TODOS los nodos del clúster.
-  # Necesita privilegios y acceso a los cgroups y socket de Docker.
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     networks:
@@ -49,12 +88,12 @@ services:
       - /var/lib/docker:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
     command:
-      - "--housekeeping_interval=30s"     # reduce CPU overhead
-      - "--docker_only=true"              # solo contenedores Docker
-      - "--store_container_labels=false"  # reduce cardinalidad de métricas
+      - "--housekeeping_interval=30s"
+      - "--docker_only=true"
+      - "--store_container_labels=false"
       - "--whitelisted_container_labels=com.docker.swarm.service.name,com.docker.swarm.node.id"
     deploy:
-      mode: global     # un pod por CADA nodo
+      mode: global
       resources:
         limits:
           memory: 256M
@@ -69,16 +108,18 @@ services:
         order: start-first
 
   # ── Prometheus ────────────────────────────────────────────────────────────
-  # Scrape cAdvisor en los nodos via dockerswarm_sd.
-  # Evalúa reglas de alerta (alert.rules.yml) y envía disparos a Alertmanager.
-  # Solo en nodos manager para acceso al Docker socket.
+  # Scrape cAdvisor en los nodos via dockerswarm_sd → socket-proxy.
+  # Se ha eliminado el mount del Docker socket crudo: ahora usa socket-proxy
+  # (host: "tcp://socket-proxy:2375" en prometheus.yml), lo que reduce la
+  # superficie de ataque. El prometheus.yml debe reflejar este cambio.
   prometheus:
     image: prom/prometheus:v2.51.2
     networks:
       - monitoring
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - prometheus_data:/prometheus
+      # FIX: ya no se monta /var/run/docker.sock directamente.
+      # prometheus.yml usa host: "tcp://socket-proxy:2375" para dockerswarm_sd.
     configs:
       - source: prometheus_cfg
         target: /etc/prometheus/prometheus.yml
@@ -90,7 +131,7 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=15d"
-      - "--web.enable-lifecycle"            # permite reload sin reiniciar
+      - "--web.enable-lifecycle"
       - "--web.enable-admin-api"
     ports:
       - target: 9090
@@ -114,7 +155,6 @@ services:
         max_attempts: 3
 
   # ── Alertmanager ─────────────────────────────────────────────────────────
-  # Recibe alertas de Prometheus, las agrupa y las enruta al webhook autoscaler.
   alertmanager:
     image: prom/alertmanager:v0.27.0
     networks:
@@ -150,24 +190,31 @@ services:
         delay: 5s
 
   # ── Autoscaler webhook ────────────────────────────────────────────────────
-  # Servidor Flask que recibe webhooks de Alertmanager.
-  # Llama a la Docker API via socket para escalar el servicio 'app_web'.
-  # Solo en managers para acceso al Docker socket y permiso de scale.
+  # Servidor Flask que recibe webhooks de Alertmanager y escala app_web.
+  #
+  # FIX CRÍTICO: el mount del socket era ':ro' (read-only), pero escalar un
+  # servicio Swarm requiere HTTP POST a /services/{id}/update — una operación
+  # de escritura. Con ':ro' el SDK de Docker puede fallar al enviar el POST.
+  # Se monta sin restricción para garantizar acceso lectura+escritura al socket.
+  #
+  # El socket-proxy NO sirve aquí porque solo expone endpoints de lectura;
+  # el autoscaler necesita llamar a service.scale() que usa el endpoint
+  # POST /services/{id}/update, que el proxy tiene denegado.
   autoscaler:
-    image: a24cesarba/swarm-autoscaler:1.0   # construir con Dockerfile.autoscaler
+    image: a24cesarba/swarm-autoscaler:1.0
     networks:
       - monitoring
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock   # sin :ro — necesita escritura
     environment:
-      AUTOSCALE_SERVICE: "app_web"     # nombre exacto: <stack>_<servicio>
-      AUTOSCALE_MIN: "3"
-      AUTOSCALE_MAX: "9"
-      SCALE_UP_BY: "1"
-      SCALE_DOWN_BY: "1"
-      SCALE_UP_COOLDOWN: "120"         # segundos entre scale-up consecutivos
-      SCALE_DOWN_COOLDOWN: "300"       # segundos entre scale-down consecutivos
-      LOG_LEVEL: "INFO"
+      AUTOSCALE_SERVICE:    "app_web"
+      AUTOSCALE_MIN:        "3"
+      AUTOSCALE_MAX:        "9"
+      SCALE_UP_BY:          "1"
+      SCALE_DOWN_BY:        "1"
+      SCALE_UP_COOLDOWN:    "120"
+      SCALE_DOWN_COOLDOWN:  "300"
+      LOG_LEVEL:            "INFO"
     deploy:
       mode: replicated
       replicas: 1
@@ -182,24 +229,3 @@ services:
       restart_policy:
         condition: on-failure
         delay: 5s
-
-  socket-proxy:
-      image: tecnativa/docker-socket-proxy:0.3.0
-      networks:
-        - monitoring
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock:ro
-      environment:
-        SERVICES: 1     # GET /services
-        TASKS: 1        # GET /tasks
-        NETWORKS: 1     # GET /networks
-        NODES: 1        # GET /nodes
-        # Todo lo demás queda en 0 (denegado por defecto)
-      deploy:
-        mode: replicated
-        replicas: 1
-        placement:
-          constraints:
-            - node.role == manager
-        restart_policy:
-          condition: on-failure
