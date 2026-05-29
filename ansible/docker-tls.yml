@@ -281,7 +281,7 @@
         content: |
           [Service]
           ExecStart=
-          ExecStart=/usr/bin/dockerd
+          ExecStart=/usr/sbin/dockerd
         mode: '0644'
       notify: Recargar y reiniciar Docker
 
@@ -333,7 +333,7 @@
           --tlscert   /etc/docker/tls/client-cert.pem
           --tlskey    /etc/docker/tls/client-key.pem
           -H tcp://10.0.0.11:2376
-          info --format "{{.Swarm.NodeID}}"
+          info
       register: tls_check
       changed_when: false
 

@@ -124,7 +124,7 @@ Vagrant.configure("2") do |config|
         ip: "10.10.0.3#{i}",
         netmask: "255.255.255.0",
         virtualbox__intnet: "datos-swarm"
-
+  
       db.vm.provider "virtualbox" do |vb|
         vb.name = "db#{i}"
         vb.gui = false

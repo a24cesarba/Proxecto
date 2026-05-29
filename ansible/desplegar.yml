@@ -33,6 +33,14 @@
 
   tasks:
 
+    # Red monitoring creada antes del despliegue porque debe existir en ambos stacks
+    - name: Crear red overlay monitoring (si no existe)
+      ansible.builtin.command: >
+        docker network create --driver overlay monitoring
+      register: net_result
+      changed_when: net_result.rc == 0
+      failed_when: net_result.rc != 0 and 'already exists' not in net_result.stderr
+
     # ── Secretos ──────────────────────────────────────────────────────────────
 
     - name: Comprobar si el secreto db_root_password ya existe
