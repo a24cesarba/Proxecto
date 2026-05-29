@@ -4,6 +4,8 @@ FROM php:8.2-apache
 # Necesaria para conectar a Galera/MariaDB via HAProxy (lb:3306).
 RUN docker-php-ext-install pdo_mysql
 
+# RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 # ── Configuración PHP: límite de subida de imágenes ───────────────────────────
 RUN { \
     echo 'upload_max_filesize = 10M'; \
@@ -25,16 +27,10 @@ RUN { \
  && a2enconf almacenamento
 
 # ── Directorio de subidas ──────────────────────────────────────────────────────
-# El bind mount de docker-stack.yml sobreescribe este directorio en runtime.
-# Lo creamos aquí para que www-data tenga el owner correcto si el mount
-# llega vacío (primera ejecución).
 RUN mkdir -p /app/almacenamiento \
  && chown www-data:www-data /app/almacenamiento
 
 # ── Código fuente ──────────────────────────────────────────────────────────────
-# El contexto de build debe ser ansible/web/ (donde está este Dockerfile).
-# COPY copia app/ (con los .php, db.php, session_db.php, imaxes/, etc.)
-# al document root de Apache.
 COPY app/ /var/www/html/
 
 RUN chown -R www-data:www-data /var/www/html \

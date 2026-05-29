@@ -13,25 +13,18 @@ $nomeph = "NovoNome";
 $descph = "NovaDesc";
 $famph = "NovaFam";
 
-// Si se ha enviado el formulario para subir la imagen
 if (isset($_POST['subir'])) {
     
-    // Comprobamos que el archivo se ha enviado y no hay errores de subida
     if (isset($_FILES['imagen']) && $_FILES['imagen']['error'] === UPLOAD_ERR_OK) {
         
-        // Obtenemos el nombre del archivo
         $nombreArchivo = basename($_FILES['imagen']['name']);
         
-        // Definimos la ruta de destino exacta que pediste
         $rutaDestino = '/app/almacenamiento/' . $nombreArchivo;
         
-        // Movemos el archivo de la carpeta temporal del servidor a su destino final
         if (move_uploaded_file($_FILES['imagen']['tmp_name'], $rutaDestino)) {
             
-            // Si el archivo se guardó físicamente, escribimos el nombre en la BD
             $pdo = getDbConnection();
             try {
-                // ATENCIÓN: Cambia 'imagenes' y 'nombre_archivo' por los nombres reales de tu tabla y columna
                 $pdoStatement = $pdo->prepare("INSERT INTO produto (nome,descricion,familia,imaxe) VALUES (:nomeprod,:descripcion,:familia,:nombre)");
                 $pdoStatement->bindParam(":nomeprod", $nomeph);
                 $pdoStatement->bindParam(":descripcion", $descph);

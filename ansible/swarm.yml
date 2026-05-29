@@ -53,9 +53,6 @@
         - inventory_hostname != leader_hostname
         - "'Swarm: inactive' in swarm_check.stdout"
 
-    # ── WORKERS (lb, db, traefik) ─────────────────────────────────────────
-    # Todos los nodos del grupo 'workers' usan el token de worker.
-    # Incluye traefik1 y traefik2.
 
     - name: Unir nodos al clúster como Workers
       ansible.builtin.command: >
@@ -82,8 +79,6 @@
       when: inventory_hostname == leader_hostname
       changed_when: false
 
-    # role=traefik: los contenedores Traefik se colocan exclusivamente en estas
-    # VMs, que tienen la IP de frontend (192.168.56.2x) y publican 80/443.
     - name: Etiquetar nodos Traefik (role=traefik)
       ansible.builtin.command: "docker node update --label-add role=traefik {{ item }}"
       loop: "{{ groups['traefik'] }}"

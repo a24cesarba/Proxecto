@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""
-=============================================================================
-autoscaler.py — Webhook receiver para autoescalado de Docker Swarm
-
-Recibe alertas de Alertmanager (formato JSON estándar) y escala
-el servicio configurado llamando a la Docker API via Unix socket.
-
-Lógica de escala:
-  - WebHighCpu  firing   → escalar +SCALE_UP_BY réplicas (hasta AUTOSCALE_MAX)
-  - WebHighCpu  resolved → escalar -SCALE_DOWN_BY réplicas (hasta AUTOSCALE_MIN)
-  - WebLowCpu   firing   → escalar -SCALE_DOWN_BY réplicas (hasta AUTOSCALE_MIN)
-
-Cooldown: se ignoran peticiones de escala si la última ocurrió hace menos
-de SCALE_UP_COOLDOWN / SCALE_DOWN_COOLDOWN segundos, respectivamente.
-Esto evita el flapping (escalar arriba y abajo en cuestión de segundos).
-=============================================================================
-"""
 
 import os
 import time
@@ -205,6 +188,4 @@ if __name__ == "__main__":
         "Autoscaler arrancando: service=%s min=%d max=%d",
         SERVICE_NAME, MIN_REPLICAS, MAX_REPLICAS,
     )
-    # En producción usar gunicorn: gunicorn -w 1 -b 0.0.0.0:5000 autoscaler:app
-    # -w 1: un solo worker para evitar condiciones de carrera en el cooldown
     app.run(host="0.0.0.0", port=5000, threaded=False)

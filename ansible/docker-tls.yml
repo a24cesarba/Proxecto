@@ -170,7 +170,6 @@
         - "{{ tls_dir }}/client-cert.pem"
 
     # ── Docker secrets para Traefik ────────────────────────────────────────
-    # Los secrets se crean una sola vez. Si ya existen se omite la creación.
 
     - name: Comprobar secreto docker_client_ca
       ansible.builtin.command: docker secret inspect docker_client_ca
@@ -310,9 +309,6 @@
         state: restarted
         daemon_reload: yes
 
-    # Tras reiniciar Docker el nodo sale del Swarm temporalmente.
-    # Swarm se reconecta solo (el manager reestablece el canal de control),
-    # pero esperamos unos segundos por si acaso.
     - name: Esperar reconexión Swarm
       ansible.builtin.pause:
         seconds: 10

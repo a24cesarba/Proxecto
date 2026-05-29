@@ -1,30 +1,20 @@
 api:
   dashboard: true
-  insecure: true    # dashboard en :8080 — ok en red interna
+  insecure: true  
 
 entryPoints:
   web:
     address: ":80"
-    # Para redirigir HTTP → HTTPS en producción:
-    # http:
-    #   redirections:
-    #     entryPoint:
-    #       to: websecure
-    #       scheme: https
 
   websecure:
     address: ":443"
 
 providers:
-  docker:
-    # FIX: nombre completo del servicio para resolución DNS cross-stack,
-    # y sin bloque tls (el socket-proxy usa HTTP plano, no HTTPS).
+  swarm:
     endpoint: "tcp://monitoring_socket-proxy:2375"
-
-    swarmMode: true
-    swarmModeRefreshSeconds: 15
     exposedByDefault: false
     network: app_proxy_web
+    refreshSeconds: 15
 
 log:
   level: "INFO"

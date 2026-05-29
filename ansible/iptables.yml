@@ -56,7 +56,7 @@
     - name: Vaciar cadena DOCKER-USER (si existe)
       ansible.builtin.command: iptables -F DOCKER-USER
       changed_when: true
-      failed_when: false   # puede no existir antes del primer arranque de Docker
+      failed_when: false
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -76,8 +76,6 @@
         comment: "loopback"
 
     # ── Conexiones establecidas ───────────────────────────────────────────────
-    # Permite el tráfico de retorno de conexiones que el propio nodo inició.
-    # Sin esta regla, nada que salga puede recibir respuesta.
     - name: ACCEPT conexiones ESTABLISHED y RELATED
       ansible.builtin.iptables:
         chain: INPUT
@@ -88,8 +86,6 @@
         comment: "established-related"
 
     # ── ICMP (ping, traceroute, MTU path discovery) ───────────────────────────
-    # Rate-limit a 10 pings/s para evitar flood. Permite tanto desde la red de
-    # gestión como desde la NAT de Vagrant (diagnóstico desde el host).
     - name: ACCEPT ICMP echo-request con rate limit desde redes internas
       ansible.builtin.iptables:
         chain: INPUT
@@ -195,10 +191,6 @@
         comment: "swarm-join"
 
     # ── Docker API remota con mTLS ─────────────────────────────────────────────
-    # Puerto 2376 TCP: solo los nodos Traefik (10.0.0.41-42) lo necesitan.
-    # /30 a partir de .40 cubre exactamente .41 y .42.
-    # Las reglas de iptables del playbook docker-tls.yml se eliminan porque
-    # este playbook es la única fuente de verdad para el cortafuegos.
     - name: ACCEPT Docker API TLS TCP 2376 solo desde nodos Traefik
       ansible.builtin.iptables:
         chain: INPUT
@@ -209,9 +201,6 @@
         comment: "docker-api-tls-traefik"
 
     # ── GlusterFS — entre nodos web únicamente (10.0.0.11-13) ────────────────
-    # Puerto 24007: daemon glusterd (gestión del clúster GlusterFS).
-    # Puertos 49152-49160: procesos brick (un brick por nodo; rango conservador).
-    # Solo se permite desde los otros managers, no desde el resto del clúster.
     - name: ACCEPT GlusterFS glusterd TCP 24007 desde managers
       ansible.builtin.iptables:
         chain: INPUT
@@ -266,10 +255,6 @@
         jump: ACCEPT
         comment: "gluster-brick-web3"
 
-    # ── Prometheus dashboard (mode:ingress — no aplica INPUT, ver PLAY 5) ─────
-    # Puerto 9090 publicado vía ingress routing mesh — lo gestiona DOCKER-USER.
-    # Aquí no hace falta ninguna regla INPUT para 9090.
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PLAY 4 — Reglas INPUT para nodos TRAEFIK (traefik1, traefik2)
@@ -280,8 +265,6 @@
   tasks:
 
     # ── HTTP/HTTPS públicos (mode:host — SÍ pasan por INPUT) ─────────────────
-    # Traefik publica 80 y 443 con mode:host, que vincula directamente al socket
-    # del host. El tráfico entra por eth3 (192.168.56.2x) y sí pasa por INPUT.
     - name: ACCEPT HTTP 80 desde cualquier fuente
       ansible.builtin.iptables:
         chain: INPUT
@@ -298,24 +281,8 @@
         jump: ACCEPT
         comment: "https-public"
 
-    # ── Dashboard Traefik (mode:ingress en :8081 — ver DOCKER-USER) ───────────
-    # El dashboard se publica como mode:ingress. La restricción a la red de
-    # gestión se aplica en PLAY 5 mediante DOCKER-USER, no aquí.
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # PLAY 5 — Reglas DOCKER-USER para puertos mode:ingress
-#
-# Estos puertos NO pasan por INPUT porque Docker aplica DNAT en PREROUTING:
-#   Prometheus   :9090  (publicado en managers)
-#   Alertmanager :9093  (publicado en managers)
-#   cAdvisor     :8080  (publicado en todos los nodos, modo global)
-#   Dashboard    :8081  (publicado en nodos traefik)
-#
-# DOCKER-USER usa --ctorigdstport para filtrar por el puerto original (antes
-# del DNAT), lo que permite restricciones específicas por servicio.
-# Las reglas se INSERTAN al principio (-I) para ejecutarse antes que las
-# reglas de Docker.
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Reglas DOCKER-USER para servicios mode:ingress (todos los nodos)
   hosts: all
@@ -323,9 +290,6 @@
   tasks:
 
     # ── Permitir redes internas acceso completo a contenedores ────────────────
-    # Las redes Docker (overlay, gwbridge) tienen rangos 172.16.0.0/12.
-    # La red de gestión (10.0.0.0/24) puede acceder a todos los servicios.
-    # La red host-only (192.168.56.0/24) permite acceso admin desde el host.
     - name: DOCKER-USER ACCEPT desde redes Docker internas (overlay, gwbridge)
       ansible.builtin.command: >
         iptables -I DOCKER-USER 1
@@ -354,9 +318,6 @@
       failed_when: false
 
     # ── Bloquear acceso externo a puertos de monitorización ───────────────────
-    # Se filtran por el puerto ORIGINAL (antes del DNAT) usando ctorigdstport.
-    # Cualquier fuente que NO haya pasado las reglas ACCEPT anteriores y
-    # que intente acceder a estos puertos es bloqueada.
     - name: DOCKER-USER DROP acceso externo a Prometheus :9090
       ansible.builtin.command: >
         iptables -A DOCKER-USER
@@ -408,8 +369,6 @@
         chain: INPUT
         policy: DROP
 
-    # netfilter-persistent guarda las reglas en /etc/iptables/rules.v4
-    # y las carga automáticamente en el arranque del sistema.
     - name: Guardar reglas IPv4 de forma persistente
       ansible.builtin.command: netfilter-persistent save
       changed_when: true

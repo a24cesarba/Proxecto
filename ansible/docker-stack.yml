@@ -133,7 +133,7 @@ services:
         reservations:
           memory: 192M
       restart_policy:
-        condition: on-failure
+        condition: any
         delay: 5s
         max_attempts: 3
         window: 120s
@@ -158,6 +158,12 @@ services:
         - "autoscale.service=app_web"
         - "autoscale.min=3"
         - "autoscale.max=9"
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost/"]
+    #   interval: 15s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 20s
 
   # ── HAProxy (balanceador MySQL L4) ────────────────────────────────────────
   lb:

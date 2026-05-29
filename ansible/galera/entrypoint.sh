@@ -17,13 +17,8 @@ SST_PASSWORD=$(< "$SST_PWD_FILE")
 
 
 # ── Node Identity ─────────────────────────────────────────────────────────────
-# In Swarm global mode with hostname: "{{.Node.Hostname}}", the container
-# hostname matches the Swarm node name (db1 / db2 / db3 from Vagrantfile).
 NODE_NAME="${GALERA_NODE_NAME:-$(hostname)}"
 
-# Auto-detect the container's IP on the overlay network. This is what Galera
-# advertises to peers for replication traffic. 'hostname -i' returns the
-# container's primary overlay IP assigned by Docker Swarm.
 NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(ip -4 addr show | grep inet | grep -v '127.0.0.1' | grep -v '172.18' | awk '{print $2}' | cut -d/ -f1 | head -n 1)}"
 
 log "Node identity → name=${NODE_NAME}  overlay_addr=${NODE_ADDRESS}"
@@ -46,14 +41,9 @@ if [ -f "${DATADIR}/grastate.dat" ]; then
     # ── Case 1 & 2: Existing data directory ──────────────────────────────────
     log "Found existing datadir with grastate.dat"
     if grep -q "safe_to_bootstrap: 1" "${DATADIR}/grastate.dat"; then
-        # Galera marked this node safe to bootstrap on shutdown.
-        # It was the last node to leave the cluster cleanly — it holds the
-        # most up-to-date committed state.
         log "safe_to_bootstrap=1 → bootstrapping cluster from this node's data"
         BOOTSTRAP=true
     else
-        # Another node has equal or newer data. Join and let Galera determine
-        # if IST (fast, delta sync) or SST (full copy) is needed.
         log "safe_to_bootstrap=0 → joining existing cluster (IST/SST will sync state)"
         BOOTSTRAP=false
     fi
@@ -64,23 +54,13 @@ elif [ -z "$(ls -A "$DATADIR" 2>/dev/null)" ]; then
     log "Empty datadir detected — fresh deployment"
 
     if [ "$NODE_NAME" = "$BOOTSTRAP_NODE" ]; then
-        # This is the designated seed node. Start a new cluster.
-        # The other db nodes will wait until this node's Galera port
-        # is reachable, then join.
         log "I am the bootstrap node (${BOOTSTRAP_NODE}) → starting new cluster"
         BOOTSTRAP=true
 
     else
-        # Not the seed. Wait for the bootstrap node to form a cluster
-        # before attempting to join, otherwise Galera returns
-        # "gcs/src/gcs_group.cpp: group_bootstrap" errors and retries noisily.
         log "I am NOT the bootstrap node — waiting for cluster to form..."
         BOOTSTRAP=false
 
-        # Port 4567 is Galera's group communication port. Once the bootstrap
-        # node has it open, the cluster Primary Component is forming.
-        # CLUSTER_SERVICE resolves via Swarm dnsrr to the task IPs of app_db —
-        # nc will reach whichever task IP the DNS returns.
         MAX_WAIT=120
         WAITED=0
         log "Probing ${CLUSTER_SERVICE}:4567 (timeout ${MAX_WAIT}s)..."
@@ -100,17 +80,12 @@ elif [ -z "$(ls -A "$DATADIR" 2>/dev/null)" ]; then
 else
 
     # ── Case 5: Datadir has content but no grastate.dat ───────────────────────
-    # Likely a crash during initial DB setup or a corrupt shutdown.
-    # Attempt to join; the cluster will force a full SST to recover this node.
     log "WARNING: datadir not empty but grastate.dat missing — joining (expect forced SST)"
     BOOTSTRAP=false
 
 fi
 
 # ── Write Runtime Galera Config ───────────────────────────────────────────────
-# This file is written fresh on every container start. Priority order for
-# MariaDB config files is alphabetical, so 61-* overrides 60-galera.cnf
-# for any duplicate keys.
 RUNTIME_CNF=/etc/mysql/mariadb.conf.d/61-galera-runtime.cnf
 
 log "Writing runtime config → ${RUNTIME_CNF}"
@@ -135,16 +110,5 @@ else
 fi
 
 # ── Hand Off to Official MariaDB Entrypoint ───────────────────────────────────
-# docker-entrypoint.sh handles:
-#   - mysql_install_db + grant setup on empty datadir (temp mysqld, no Galera)
-#   - Running /docker-entrypoint-initdb.d/ scripts (creates SST user)
-#   - Final exec: mariadbd $USER_ARGS
-#
-# $@ is "mariadbd" (from CMD in Dockerfile).
-# $EXTRA_FLAGS is "--wsrep-new-cluster" or empty.
-#
-# The temp init startup inside docker-entrypoint.sh uses --skip-networking and
-# does NOT pass user args, so --wsrep-new-cluster only applies to the final
-# exec, after the DB is fully initialized. This is the correct behaviour.
 log "Handing off to docker-entrypoint.sh..."
 exec /usr/local/bin/docker-entrypoint.sh "$@" $EXTRA_FLAGS
