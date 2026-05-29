@@ -152,7 +152,7 @@ services:
         - "traefik.http.routers.web.rule=PathPrefix(`/`)"
         - "traefik.http.routers.web.entrypoints=web"
         - "traefik.http.services.web.loadbalancer.server.port=80"
-        - "traefik.http.services.web.loadbalancer.healthcheck.path=/health"
+        - "traefik.http.services.web.loadbalancer.healthcheck.path=/login.php"
         - "traefik.http.services.web.loadbalancer.healthcheck.interval=10s"
         - "traefik.http.services.web.loadbalancer.healthcheck.timeout=3s"
         - "autoscale.service=app_web"
