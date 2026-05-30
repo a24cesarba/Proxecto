@@ -70,8 +70,8 @@ Vagrant.configure("2") do |config|
         vb.memory = "1024"
         vb.cpus = 1
         vb.linked_clone = true
-        vb.customize ["modifyvm", :id, "--nic4", "natnetwork"]
-        vb.customize ["modifyvm", :id, "--nat-network3", "ProyectoNetwork"]
+        # vb.customize ["modifyvm", :id, "--nic4", "natnetwork"]
+        # vb.customize ["modifyvm", :id, "--nat-network3", "ProyectoNetwork"]
       end
 
       web.vm.post_up_message = "Buenas, soy el \"web#{i}\" (Web/Swarm Manager)"
