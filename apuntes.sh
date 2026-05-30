@@ -53,3 +53,5 @@ ansible-playbook swarm.yml
 ansible-playbook iptables.yml
 ansible-playbook docker-tls.yml
 ansible-playbook desplegar.yml
+
+firefox http://192.168.56.21/

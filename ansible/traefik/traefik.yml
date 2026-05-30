@@ -11,7 +11,7 @@ entryPoints:
 
 providers:
   swarm:
-    endpoint: "tcp://app-proxy:2375"
+    endpoint: "tcp://socket-proxy:2375"
     exposedByDefault: false
     network: app_proxy_web
     refreshSeconds: 15

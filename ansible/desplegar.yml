@@ -33,14 +33,6 @@
 
   tasks:
 
-    # Red monitoring creada antes del despliegue porque debe existir en ambos stacks
-    - name: Crear red overlay monitoring (si no existe)
-      ansible.builtin.command: >
-        docker network create --driver overlay monitoring
-      register: net_result
-      changed_when: net_result.rc == 0
-      failed_when: net_result.rc != 0 and 'already exists' not in net_result.stderr
-
     # ── Secretos ──────────────────────────────────────────────────────────────
 
     - name: Comprobar si el secreto db_root_password ya existe
@@ -159,7 +151,7 @@
             docker config create prometheus_cfg_v2 /tmp/prometheus.yml
             docker service update --config-rm prometheus_cfg
               --config-add source=prometheus_cfg_v2,target=/etc/prometheus/prometheus.yml
-              monitoring_prometheus
+              app_prometheus
       when: config_prometheus_check.rc == 0
 
     # ── Config de Alertmanager ────────────────────────────────────────────────
@@ -187,7 +179,7 @@
             docker config create alertmanager_cfg_v2 /tmp/alertmanager.yml
             docker service update --config-rm alertmanager_cfg
               --config-add source=alertmanager_cfg_v2,target=/etc/alertmanager/alertmanager.yml
-              monitoring_alertmanager
+              app_alertmanager
       when: config_alertmanager_check.rc == 0
 
     # ── Config de reglas de alerta ────────────────────────────────────────────
@@ -216,9 +208,9 @@
             docker service update
               --config-rm alert_rules_cfg
               --config-add source=alert_rules_cfg_v2,target=/etc/prometheus/alert.rules.yml
-              monitoring_prometheus
+              app_prometheus
       when: config_alertrules_check.rc == 0
-      
+
     # ── Stack file ────────────────────────────────────────────────────────────
 
     - name: Crear directorio para ficheros del stack en el leader
@@ -249,7 +241,7 @@
 
     - name: Esperar 30 segundos a que los servicios inicialicen
       ansible.builtin.pause:
-        seconds: 30
+        seconds: 60
 
     - name: Mostrar estado de los servicios del stack
       ansible.builtin.command: >
