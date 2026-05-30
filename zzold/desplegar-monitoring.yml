@@ -5,15 +5,6 @@
 
   tasks:
 
-    # ── Red overlay compartida con el stack 'app' ─────────────────────────────
-    # Necesaria para que Prometheus pueda scrapear Traefik directamente.
-    - name: Crear red overlay monitoring (si no existe)
-      ansible.builtin.command: >
-        docker network create --driver overlay monitoring
-      register: net_result
-      changed_when: net_result.rc == 0
-      failed_when: net_result.rc != 0 and 'already exists' not in net_result.stderr
-
     # ── Config de Prometheus ──────────────────────────────────────────────────
     - name: Copiar prometheus.yml al nodo leader
       ansible.builtin.copy:

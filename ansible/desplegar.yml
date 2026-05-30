@@ -134,6 +134,91 @@
               app_traefik
       when: config_traefik_check.rc == 0
 
+    # ── Config de Prometheus ──────────────────────────────────────────────────
+    - name: Copiar prometheus.yml al nodo leader
+      ansible.builtin.copy:
+        src: ./prometheus/prometheus.yml
+        dest: /tmp/prometheus.yml
+        mode: '0644'
+
+    - name: Comprobar si prometheus_cfg ya existe
+      ansible.builtin.command: docker config inspect prometheus_cfg
+      register: config_prometheus_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear config prometheus_cfg
+      ansible.builtin.command: docker config create prometheus_cfg /tmp/prometheus.yml
+      when: config_prometheus_check.rc != 0
+
+    - name: Advertir si prometheus_cfg ya existe
+      ansible.builtin.debug:
+        msg: >
+          AVISO: el config 'prometheus_cfg' ya existe. Si modificaste prometheus.yml,
+          rota el config manualmente:
+            docker config create prometheus_cfg_v2 /tmp/prometheus.yml
+            docker service update --config-rm prometheus_cfg
+              --config-add source=prometheus_cfg_v2,target=/etc/prometheus/prometheus.yml
+              monitoring_prometheus
+      when: config_prometheus_check.rc == 0
+
+    # ── Config de Alertmanager ────────────────────────────────────────────────
+    - name: Copiar alertmanager.yml al nodo leader
+      ansible.builtin.copy:
+        src: ./alertmanager/alertmanager.yml
+        dest: /tmp/alertmanager.yml
+        mode: '0644'
+
+    - name: Comprobar si alertmanager_cfg ya existe
+      ansible.builtin.command: docker config inspect alertmanager_cfg
+      register: config_alertmanager_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear config alertmanager_cfg
+      ansible.builtin.command: docker config create alertmanager_cfg /tmp/alertmanager.yml
+      when: config_alertmanager_check.rc != 0
+
+    - name: Advertir si alertmanager_cfg ya existe
+      ansible.builtin.debug:
+        msg: >
+          AVISO: el config 'alertmanager_cfg' ya existe. Si modificaste alertmanager.yml,
+          rota el config manualmente:
+            docker config create alertmanager_cfg_v2 /tmp/alertmanager.yml
+            docker service update --config-rm alertmanager_cfg
+              --config-add source=alertmanager_cfg_v2,target=/etc/alertmanager/alertmanager.yml
+              monitoring_alertmanager
+      when: config_alertmanager_check.rc == 0
+
+    # ── Config de reglas de alerta ────────────────────────────────────────────
+    - name: Copiar alert.rules.yml al nodo leader
+      ansible.builtin.copy:
+        src: ./alertmanager/alert.rules.yml
+        dest: /tmp/alert.rules.yml
+        mode: '0644'
+
+    - name: Comprobar si alert_rules_cfg ya existe
+      ansible.builtin.command: docker config inspect alert_rules_cfg
+      register: config_alertrules_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear config alert_rules_cfg
+      ansible.builtin.command: docker config create alert_rules_cfg /tmp/alert.rules.yml
+      when: config_alertrules_check.rc != 0
+
+    - name: Advertir si alert_rules_cfg ya existe
+      ansible.builtin.debug:
+        msg: >
+          AVISO: el config 'alert_rules_cfg' ya existe. Si modificaste alert.rules.yml,
+          rota el config manualmente:
+            docker config create alert_rules_cfg_v2 /tmp/alert.rules.yml
+            docker service update
+              --config-rm alert_rules_cfg
+              --config-add source=alert_rules_cfg_v2,target=/etc/prometheus/alert.rules.yml
+              monitoring_prometheus
+      when: config_alertrules_check.rc == 0
+      
     # ── Stack file ────────────────────────────────────────────────────────────
 
     - name: Crear directorio para ficheros del stack en el leader

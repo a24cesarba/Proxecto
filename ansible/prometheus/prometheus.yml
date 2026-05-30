@@ -29,7 +29,7 @@ scrape_configs:
         role: tasks
         filters:
           - name: name
-            values: ['monitoring_cadvisor']
+            values: ['app_cadvisor']
     relabel_configs:
       - source_labels: [__meta_dockerswarm_task_desired_state]
         regex: running
