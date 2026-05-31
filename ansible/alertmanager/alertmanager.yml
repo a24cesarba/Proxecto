@@ -41,6 +41,6 @@ receivers:
 
   - name: 'autoscaler-webhook'
     webhook_configs:
-      - url: 'http://monitoring_autoscaler:5000/webhook'
+      - url: 'http://app_autoscaler:5000/webhook'
         send_resolved: true  
 

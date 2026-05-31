@@ -110,8 +110,6 @@ services:
         delay: 10s
         failure_action: rollback
         order: start-first
-      labels:
-        - "traefik.enable=false"
 
   # ── Servicio web ──────────────────────────────────────────
   web:
@@ -161,16 +159,12 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.docker.network=app_proxy_web"
-        - "traefik.http.routers.web.service=web"  
         - "traefik.http.routers.web.rule=PathPrefix(`/`)"
         - "traefik.http.routers.web.entrypoints=web"
         - "traefik.http.services.web.loadbalancer.server.port=80"
         - "traefik.http.services.web.loadbalancer.healthcheck.path=/healthz.php"
         - "traefik.http.services.web.loadbalancer.healthcheck.interval=10s"
         - "traefik.http.services.web.loadbalancer.healthcheck.timeout=3s"
-        - "autoscale.service=app_web"
-        - "autoscale.min=3"
-        - "autoscale.max=9"
     # healthcheck:
     #   test: ["CMD", "curl", "-f", "http://localhost/"]
     #   interval: 15s
