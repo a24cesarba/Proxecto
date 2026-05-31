@@ -161,6 +161,7 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.docker.network=app_proxy_web"
+        - "traefik.http.routers.web.service=web"  
         - "traefik.http.routers.web.rule=PathPrefix(`/`)"
         - "traefik.http.routers.web.entrypoints=web"
         - "traefik.http.services.web.loadbalancer.server.port=80"
@@ -272,10 +273,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      SERVICES: 1     
-      TASKS:    1     
-      NETWORKS: 1     
-      NODES:    1     
+      SERVICES:   1     
+      TASKS:      1     
+      NETWORKS:   1     
+      NODES:      1     
+      CONTAINERS: 1
 
     deploy:
       mode: replicated

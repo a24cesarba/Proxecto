@@ -239,7 +239,7 @@
       ansible.builtin.debug:
         msg: "{{ stack_result.stdout_lines }}"
 
-    - name: Esperar 30 segundos a que los servicios inicialicen
+    - name: Esperar 60 segundos a que los servicios inicialicen
       ansible.builtin.pause:
         seconds: 60
 
