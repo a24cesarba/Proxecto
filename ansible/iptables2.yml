@@ -1,0 +1,35 @@
+---
+- name: Resetear iptables a estado limpio en todos los nodos
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Política INPUT → ACCEPT temporalmente (evita bloqueo durante el flush)
+      ansible.builtin.iptables:
+        chain: INPUT
+        policy: ACCEPT
+
+    - name: Política INPUT → ACCEPT temporalmente (evita bloqueo durante el flush)
+      ansible.builtin.iptables:
+        chain: FORWARD
+        policy: ACCEPT
+
+    - name: Política INPUT → ACCEPT temporalmente (evita bloqueo durante el flush)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        policy: ACCEPT
+
+    - name: Vaciar cadena INPUT
+      ansible.builtin.iptables:
+        chain: INPUT
+        flush: yes
+
+    - name: Vaciar cadena FORWARD
+      ansible.builtin.iptables:
+        chain: FORWARD
+        flush: yes
+
+    - name: Vaciar cadena DOCKER-USER (si existe)
+      ansible.builtin.command: iptables -F DOCKER-USER
+      changed_when: true
+      failed_when: false

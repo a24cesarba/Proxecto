@@ -50,8 +50,8 @@ cd ./ansible/
 ansible-playbook instalar.yml
 ansible-playbook gluster.yml
 ansible-playbook swarm.yml
-ansible-playbook iptables.yml
+# ansible-playbook iptables.yml
+ansible-playbook iptables2.yml
 ansible-playbook docker-tls.yml
 ansible-playbook desplegar.yml
 
-firefox http://192.168.56.21/
