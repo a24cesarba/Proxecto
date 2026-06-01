@@ -21,6 +21,6 @@ if (isset($_GET['rexistrar'])) {
     $pdoStatement->execute();
     header("Location:login.php");
 } else {
-    header("Location:rexistra.html");
+    header("Location:rexistro.html");
 }
 ?>
