@@ -30,7 +30,7 @@ Vagrant.configure("2") do |config|
 
       # Frontend — puertos 80/443 accesibles desde el host
       tr.vm.network "public_network", 
-        bridge: "wlp0s20f3", 
+        bridge: "eno1", 
         use_dhcp_assigned_default_route: false
 
       tr.vm.provider "virtualbox" do |vb|
