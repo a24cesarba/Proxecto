@@ -29,7 +29,9 @@ Vagrant.configure("2") do |config|
         virtualbox__intnet: "datos-swarm"
 
       # Frontend — puertos 80/443 accesibles desde el host
-      tr.vm.network "private_network", ip: "192.168.56.2#{i}"
+      tr.vm.network "public_network", 
+        bridge: "wlp0s20f3", 
+        use_dhcp_assigned_default_route: false
 
       tr.vm.provider "virtualbox" do |vb|
         vb.name = "traefik#{i}"
@@ -37,7 +39,7 @@ Vagrant.configure("2") do |config|
         vb.memory = "512"
         vb.cpus = 1
         vb.linked_clone = true
-        vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
+        vb.customize ["modifyvm", :id, "--groups", "/SuperCluster"]
       end
 
       tr.vm.post_up_message = "Buenas, soy el \"traefik#{i}\" (Traefik edge proxy)"
@@ -70,8 +72,7 @@ Vagrant.configure("2") do |config|
         vb.memory = "1024"
         vb.cpus = 1
         vb.linked_clone = true
-        # vb.customize ["modifyvm", :id, "--nic4", "natnetwork"]
-        # vb.customize ["modifyvm", :id, "--nat-network3", "ProyectoNetwork"]
+        vb.customize ["modifyvm", :id, "--groups", "/SuperCluster"]
       end
 
       web.vm.post_up_message = "Buenas, soy el \"web#{i}\" (Web/Swarm Manager)"
@@ -101,7 +102,7 @@ Vagrant.configure("2") do |config|
         vb.memory = "512"
         vb.cpus = 1
         vb.linked_clone = true
-        vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
+        vb.customize ["modifyvm", :id, "--groups", "/SuperCluster"]
       end
 
       lb.vm.post_up_message = "Buenas, soy el \"lb#{i}\" (HAProxy MySQL)"
@@ -131,7 +132,7 @@ Vagrant.configure("2") do |config|
         vb.memory = "2048"
         vb.cpus = 1
         vb.linked_clone = true
-        vb.customize ["modifyvm", :id, "--groups", "/Aguacate3"]
+        vb.customize ["modifyvm", :id, "--groups", "/SuperCluster"]
       end
 
       db.vm.post_up_message = "Buenas, soy el \"db#{i}\" (MariaDB Galera Nodo)"
