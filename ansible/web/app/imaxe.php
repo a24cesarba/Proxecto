@@ -18,7 +18,7 @@ if (isset($_POST['subir'])) {
         $nomeph = $_POST["nome"];
         $descph = $_POST["desc"];
         $famph = $_POST["familia"];
-        
+
         $rutaDestino = '/app/almacenamiento/' . $nombreArchivo;
         
         if (move_uploaded_file($_FILES['imagen']['tmp_name'], $rutaDestino)) {
@@ -124,7 +124,6 @@ if (isset($_POST['subir'])) {
 
         <form action="" method="POST" enctype="multipart/form-data">
             <input type="file" name="imagen" accept="image/*" required>
-            <input type="submit" method="post" name="subir" value="SUBIR IMAGEN">
             <label for="nome">Nome de produto: </label>
             <input type="text" name="nome"><br>
             <label for="desc">Descrición de produto: </label>
@@ -133,6 +132,7 @@ if (isset($_POST['subir'])) {
                 <option value="fruta">Fruta</option>
                 <option value="lacteo" selected>Lacteo</option>
             </select><br>
+            <input type="submit" method="post" name="subir" value="SUBIR IMAGEN">
         </form>
         
         <br>
