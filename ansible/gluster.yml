@@ -86,6 +86,6 @@
     - name: Copiar imaxes iniciais ao GlusterFS
       ansible.builtin.copy:
         src: "./imaxes/"
-        dest: /mnt/almacenamiento_compartido/
+        dest: /mnt/almacenamiento_compartido/imaxes/
         mode: '0755'
       when: inventory_hostname == 'web1'

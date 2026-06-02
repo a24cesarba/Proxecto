@@ -445,7 +445,7 @@
 
     - name: DOCKER-USER ACCEPT ESTABLISHED/RELATED
       ansible.builtin.command: >
-        iptables -I DOCKER-USER 1
+        iptables -A DOCKER-USER
           -m conntrack --ctstate ESTABLISHED,RELATED
           -j ACCEPT
       changed_when: true
@@ -453,7 +453,7 @@
 
     - name: DOCKER-USER ACCEPT desde redes Docker internas
       ansible.builtin.command: >
-        iptables -I DOCKER-USER 1
+        iptables -A DOCKER-USER
           -s 172.16.0.0/12
           -m comment --comment "docker-user-internal-nets"
           -j ACCEPT
@@ -462,7 +462,7 @@
 
     - name: DOCKER-USER ACCEPT desde red de gestión Swarm
       ansible.builtin.command: >
-        iptables -I DOCKER-USER 1
+        iptables -A DOCKER-USER
           -s 10.0.0.0/8
           -m comment --comment "docker-user-mgmt-net"
           -j ACCEPT
@@ -471,7 +471,7 @@
 
     - name: DOCKER-USER ACCEPT desde red host-only VirtualBox (admin)
       ansible.builtin.command: >
-        iptables -I DOCKER-USER 1
+        iptables -A DOCKER-USER
           -s 192.168.56.0/24
           -j ACCEPT
       changed_when: true
@@ -479,7 +479,7 @@
 
     - name: DOCKER-USER ACCEPT HTTP público
       ansible.builtin.command: >
-        iptables -I DOCKER-USER 1
+        iptables -A DOCKER-USER
           -m conntrack --ctorigdstport 80
           -m comment --comment "docker-user-public-http"
           -j ACCEPT
@@ -488,23 +488,16 @@
 
     - name: DOCKER-USER ACCEPT HTTPS público
       ansible.builtin.command: >
-        iptables -I DOCKER-USER 1
+        iptables -A DOCKER-USER
           -m conntrack --ctorigdstport 443
           -m comment --comment "docker-user-public-https"
           -j ACCEPT
       changed_when: true
       failed_when: false
 
-    - name: DOCKER-USER DROP todo lo demás
-      ansible.builtin.command: >
-        iptables -A DOCKER-USER
-          -j DROP
-      changed_when: true
-      failed_when: false
-
     - name: DOCKER-USER ACCEPT puertos ingress expuestos
       ansible.builtin.command: >
-        iptables -I DOCKER-USER 1
+        iptables -A DOCKER-USER
           -s 192.168.1.0/24
           -m conntrack --ctorigdstport {{ item }}
           -m comment --comment "docker-user-ingress-extra"
@@ -513,6 +506,13 @@
         - "8081"
         - "9090"
         - "9093"
+      changed_when: true
+      failed_when: false
+
+    - name: DOCKER-USER DROP todo lo demás
+      ansible.builtin.command: >
+        iptables -A DOCKER-USER
+          -j DROP
       changed_when: true
       failed_when: false
 
