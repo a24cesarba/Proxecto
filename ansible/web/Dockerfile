@@ -4,9 +4,6 @@ FROM php:8.2-apache
 # Necesaria para conectar a Galera/MariaDB via HAProxy (lb:3306).
 RUN docker-php-ext-install pdo_mysql
 
-RUN echo "DirectoryIndex login.php index.php index.html" > /etc/apache2/conf-available/directoryindex.conf \
- && a2enconf directoryindex
-
 # RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # ── Configuración PHP: límite de subida de imágenes ───────────────────────────
@@ -26,6 +23,7 @@ RUN { \
     echo '    Require all granted'; \
     echo '    php_flag engine Off'; \
     echo '</Directory>'; \
+    echo 'DirectoryIndex login.php index.php index.html'; \
 } > /etc/apache2/conf-available/almacenamento.conf \
  && a2enconf almacenamento
 

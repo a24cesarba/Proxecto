@@ -68,6 +68,11 @@ CREATE TABLE IF NOT EXISTS comentarios (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
+INSERT IGNORE INTO produto (nome, descricion, familia, imaxe) VALUES
+  ('Plátano', 'Potásico',    'Frutas', 'platano.jpg'),
+  ('Leite', 'Láctico',         'Lacteos', 'leite.jpg');
+
+
 -- Usuario de aplicación
 CREATE USER IF NOT EXISTS '${APP_USER}'@'%'
     IDENTIFIED BY '${APP_PASSWORD}';

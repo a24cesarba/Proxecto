@@ -128,7 +128,7 @@ services:
       UPLOAD_DIR: "/app/almacenamiento"
     volumes:
       - type: bind
-        source: /mnt/almacenamiento_compartido
+        source: /mnt/almacenamiento_compartido/imaxes/
         target: /app/almacenamiento
         read_only: false
     deploy:

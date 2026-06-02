@@ -82,3 +82,10 @@
         fstype: glusterfs
         opts: defaults,_netdev
         state: mounted
+
+    - name: Copiar imaxes iniciais ao GlusterFS
+      ansible.builtin.copy:
+        src: "./imaxes/"
+        dest: /mnt/almacenamiento_compartido/
+        mode: '0755'
+      when: inventory_hostname == 'web1'

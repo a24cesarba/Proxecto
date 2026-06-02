@@ -463,7 +463,7 @@
     - name: DOCKER-USER ACCEPT desde red de gestión Swarm
       ansible.builtin.command: >
         iptables -I DOCKER-USER 1
-          -s 10.0.0.0/24
+          -s 10.0.0.0/8
           -m comment --comment "docker-user-mgmt-net"
           -j ACCEPT
       changed_when: true
@@ -502,6 +502,19 @@
       changed_when: true
       failed_when: false
 
+    - name: DOCKER-USER ACCEPT puertos ingress expuestos
+      ansible.builtin.command: >
+        iptables -I DOCKER-USER 1
+          -s 192.168.1.0/24
+          -m conntrack --ctorigdstport {{ item }}
+          -m comment --comment "docker-user-ingress-extra"
+          -j ACCEPT
+      loop:
+        - "8081"
+        - "9090"
+        - "9093"
+      changed_when: true
+      failed_when: false
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PLAY 8 — Cerrar INPUT con NFLOG+DROP, persistir y verificar

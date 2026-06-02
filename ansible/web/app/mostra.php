@@ -125,7 +125,6 @@ $productos = $pdo->query("SELECT * FROM produto");
 
             echo "</div>
         <a href='comenta.php?id={$fila['idProduto']}'><button>Engadir comentario</button></a>
-        <a href='imaxe.php'><button>Engadir imaxe</button></a>
     </div>";
 
             echo "</div>";
@@ -142,6 +141,7 @@ $productos = $pdo->query("SELECT * FROM produto");
 
     <br><br>
     <a href="pechasesion.php"><button>PECHAR SESIÓN</button></a>
+    <a href='imaxe.php'><button>Engadir imaxe</button></a>
 
 </body>
 

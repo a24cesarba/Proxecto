@@ -9,15 +9,15 @@ if (!isset($_SESSION['usuario'])) {
 }
 
 $mensaje = "";
-$nomeph = "NovoNome";
-$descph = "NovaDesc";
-$famph = "NovaFam";
 
 if (isset($_POST['subir'])) {
     
     if (isset($_FILES['imagen']) && $_FILES['imagen']['error'] === UPLOAD_ERR_OK) {
         
         $nombreArchivo = basename($_FILES['imagen']['name']);
+        $nomeph = $_POST["nome"];
+        $descph = $_POST["desc"];
+        $famph = $_POST["familia"];
         
         $rutaDestino = '/app/almacenamiento/' . $nombreArchivo;
         
@@ -125,6 +125,14 @@ if (isset($_POST['subir'])) {
         <form action="" method="POST" enctype="multipart/form-data">
             <input type="file" name="imagen" accept="image/*" required>
             <input type="submit" method="post" name="subir" value="SUBIR IMAGEN">
+            <label for="nome">Nome de produto: </label>
+            <input type="text" name="nome"><br>
+            <label for="desc">Descrición de produto: </label>
+            <input type="text" name="desc"><br>
+            <select name="familia">
+                <option value="fruta">Fruta</option>
+                <option value="lacteo" selected>Lacteo</option>
+            </select><br>
         </form>
         
         <br>
