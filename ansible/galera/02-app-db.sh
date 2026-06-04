@@ -4,13 +4,14 @@ set -euo pipefail
 APP_DB="${APP_DB_NAME:-app}"
 APP_USER="${APP_DB_USER:-app}"
 APP_PWD_FILE="${APP_DB_PASSWORD_FILE:-/run/secrets/db_app_password}"
+SUPERUSER_HASH_FILE="${SUPERUSER_HASH_FILE:-/run/secrets/db_superuser_hash}"
 
 if [ ! -f "$APP_PWD_FILE" ]; then
     echo "[initdb/app-db] ERROR: secret no encontrado en $APP_PWD_FILE"
     exit 1
 fi
 APP_PASSWORD=$(< "$APP_PWD_FILE")
-
+SUPERUSER_HASH=$(< "$SUPERUSER_HASH_FILE")
 echo "[initdb/app-db] Creando base de datos '${APP_DB}' y esquema..."
 
 mysql --protocol=socket -uroot -p"${MYSQL_ROOT_PASSWORD}" <<EOF
@@ -21,7 +22,6 @@ CREATE DATABASE IF NOT EXISTS \`${APP_DB}\`
 
 USE \`${APP_DB}\`;
 
--- Sesiones PHP (session_db.php)
 CREATE TABLE IF NOT EXISTS sesiones (
     id     VARCHAR(128)  NOT NULL PRIMARY KEY,
     datos  MEDIUMBLOB    NOT NULL,
@@ -29,13 +29,12 @@ CREATE TABLE IF NOT EXISTS sesiones (
     INDEX  idx_expira (expira)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Usuarios (validarexistro.php, validalogin.php)
 CREATE TABLE IF NOT EXISTS usuarios (
     nome         VARCHAR(100)  NOT NULL PRIMARY KEY,
     contrasinal  VARCHAR(255)  NOT NULL,
     completo     VARCHAR(255)  NOT NULL,
     email        VARCHAR(255)  NOT NULL,
-    datacreacion DATE          NOT NULL,
+    datacreacion DATE          NOT NULL ,
     rol          VARCHAR(50)   NOT NULL DEFAULT 'usuario'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -72,6 +71,8 @@ INSERT IGNORE INTO produto (nome, descricion, familia, imaxe) VALUES
   ('Plátano', 'Potásico',    'Frutas', 'platano.jpg'),
   ('Leite', 'Láctico',         'Lacteos', 'leite.jpg');
 
+INSERT IGNORE INTO usuarios (nome, contrasinal, completo, email, datacreacion, rol) VALUES
+  ('SUPERUSUARIO', '${SUPERUSER_HASH}', 'SUPERUSUARIO', 'SUPERUSUARIO@SUPERUSUARIO.SUPERUSUARIO', CURDATE(), 'administrador');
 
 -- Usuario de aplicación
 CREATE USER IF NOT EXISTS '${APP_USER}'@'%'

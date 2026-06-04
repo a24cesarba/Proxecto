@@ -68,6 +68,22 @@
       when: secret_app_check.rc != 0
       no_log: true
 
+    - name: Calcular hash SHA-512 de la contraseña del superusuario
+      ansible.builtin.set_fact:
+        superuser_hash: "{{ db_app_password | password_hash('sha512') }}"
+      no_log: true
+
+    - name: Comprobar si el secreto db_superuser_hash ya existe
+      ansible.builtin.command: docker secret inspect db_superuser_hash
+      register: secret_superuser_check
+      changed_when: false
+      failed_when: false
+
+    - name: Crear secreto db_superuser_hash
+      ansible.builtin.shell: "printf '%s' '{{ superuser_hash }}' | docker secret create db_superuser_hash -"
+      when: secret_superuser_check.rc != 0
+      no_log: true
+      
     # ── Config de HAProxy ─────────────────────────────────────────────────────
 
     - name: Copiar haproxy.cfg al nodo leader

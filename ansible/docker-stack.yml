@@ -37,6 +37,8 @@ secrets:
     external: true
   docker_client_key:
     external: true
+  db_superuser_hash:
+    external: true
 
 configs:
   haproxy_cfg:
@@ -217,6 +219,7 @@ services:
       - db_root_password
       - db_galera_password
       - db_app_password
+      - db_superuser_hash
     environment:
       MYSQL_ROOT_PASSWORD_FILE:   /run/secrets/db_root_password
       GALERA_SST_PASSWORD_FILE:   /run/secrets/db_galera_password
