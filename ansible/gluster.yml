@@ -83,9 +83,20 @@
         opts: defaults,_netdev
         state: mounted
 
+    - name: Crear directorio imaxes con permisos para www-data
+      ansible.builtin.file:
+        path: /mnt/almacenamiento_compartido/imaxes
+        state: directory
+        mode: '0755'
+        owner: '33'    # www-data — mismo UID que usa php:8.2-apache
+        group: '33'
+      when: inventory_hostname == 'web1'
+
     - name: Copiar imaxes iniciais ao GlusterFS
       ansible.builtin.copy:
         src: "./imaxes/"
         dest: /mnt/almacenamiento_compartido/imaxes/
-        mode: '0755'
+        mode: '0644'
+        owner: '33'
+        group: '33'
       when: inventory_hostname == 'web1'

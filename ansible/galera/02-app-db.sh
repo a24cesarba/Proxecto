@@ -68,8 +68,8 @@ CREATE TABLE IF NOT EXISTS comentarios (
 
 
 INSERT IGNORE INTO produto (nome, descricion, familia, imaxe) VALUES
-  ('Plátano', 'Potásico',    'Frutas', 'platano.jpg'),
-  ('Leite', 'Láctico',         'Lacteos', 'leite.jpg');
+  ('Plátano', 'Potásico',    'Frutas', 'imaxes/platano.jpg'),
+  ('Leite', 'Láctico',         'Lacteos', 'imaxes/leite.jpg');
 
 INSERT IGNORE INTO usuarios (nome, contrasinal, completo, email, datacreacion, rol) VALUES
   ('SUPERUSUARIO', '${SUPERUSER_HASH}', 'SUPERUSUARIO', 'SUPERUSUARIO@SUPERUSUARIO.SUPERUSUARIO', CURDATE(), 'administrador');

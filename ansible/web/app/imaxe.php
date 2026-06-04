@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['subir'])) {
                 } else {
                     // ── Nome único para evitar colisións e sobreescrituras ─────
                     $nombreFinal = uniqid('img_', true) . '.' . $ext;
-                    $rutaDestino = '/app/almacenamiento/' . $nombreFinal;
+                    $rutaDestino = '/app/almacenamiento/imaxes/' . $nombreFinal;
 
                     if (!move_uploaded_file($tmpPath, $rutaDestino)) {
                         $mensaje = "<span class='error'>Erro ao mover a imaxe. Revisa os permisos da carpeta.</span>";
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['subir'])) {
                                 ':nome'       => $nomeph,
                                 ':descricion' => $descph,
                                 ':familia'    => $famph,
-                                ':imaxe'      => $nombreFinal,
+                                ':imaxe'      => 'imaxes/' . $nombreFinal,
                             ]);
 
                             // Rotar token CSRF tras operación exitosa
