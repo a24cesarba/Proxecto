@@ -140,8 +140,8 @@ $productos = $pdo->query("SELECT * FROM produto");
     ?>
 
     <br><br>
+    <a href='imaxe.php'><button>Engadir imaxe</button></a><br>
     <a href="pechasesion.php"><button>PECHAR SESIÓN</button></a>
-    <a href='imaxe.php'><button>Engadir imaxe</button></a>
 
 </body>
 

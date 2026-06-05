@@ -3,8 +3,8 @@ require_once 'session_db.php';
 session_start();
 
 // ── Control de acceso: solo administradores ───────────────────────────────────
-if (!isset($_SESSION['usuario']) || $_SESSION['rol'] !== 'administrador') {
-    header("Location: login.php");
+if (!isset($_SESSION['usuario'])) {
+    header("Location: mostra.php");
     exit();
 }
 

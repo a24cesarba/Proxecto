@@ -10,9 +10,9 @@
     
 
     ips_gestion:
-      - 10.0.0.11
-      - 10.0.0.12
-      - 10.0.0.13
+      - 10.100.0.11
+      - 10.100.0.12
+      - 10.100.0.13
 
   tasks:
     - name: Instalar servidor GlusterFS
@@ -51,9 +51,9 @@
     - name: Crear el volumen replicado de GlusterFS
       ansible.builtin.command: >
         gluster volume create {{ gluster_vol }} replica 3
-        10.0.0.11:{{ gluster_brick }}
-        10.0.0.12:{{ gluster_brick }}
-        10.0.0.13:{{ gluster_brick }}
+        10.100.0.11:{{ gluster_brick }}
+        10.100.0.12:{{ gluster_brick }}
+        10.100.0.13:{{ gluster_brick }}
         force
       when: inventory_hostname == 'web1'
       register: vol_create

@@ -63,8 +63,10 @@ Vagrant.configure("2") do |config|
         netmask: "255.255.255.0",
         virtualbox__intnet: "datos-swarm"
 
-      # Solo para admin/dashboard — el tráfico HTTP ya no entra aquí
-      web.vm.network "private_network", ip: "192.168.56.1#{i}"
+      web.vm.network "private_network",
+        ip: "10.100.0.1#{i}",
+        netmask: "255.255.255.0",
+        virtualbox__intnet: "gluster"
 
       web.vm.provider "virtualbox" do |vb|
         vb.name = "web#{i}"

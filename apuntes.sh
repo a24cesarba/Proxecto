@@ -50,8 +50,9 @@ cd ./ansible/
 ansible-playbook instalar.yml
 ansible-playbook gluster.yml
 ansible-playbook swarm.yml
-ansible-playbook iptables.yml
-# ansible-playbook iptables2.yml
 ansible-playbook docker-tls.yml
 ansible-playbook desplegar.yml
+# ansible-playbook iptables2.yml
+ansible-playbook iptables.yml
 
+ansible traefik -m shell -a "ip -4 addr show eth3 2>/dev/null | grep -Ei '192\.168\.1\.\w*' | cut -d ' ' -f 6 | cut -d '/' -f 1"
