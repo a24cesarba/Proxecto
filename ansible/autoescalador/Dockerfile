@@ -22,10 +22,4 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:5000/healthz || exit 1
 
-# gunicorn con 1 worker (threaded=False en Flask) para cooldown thread-safe
-CMD ["python", "-m", "gunicorn", \
-     "--workers", "1", \
-     "--bind", "0.0.0.0:5000", \
-     "--timeout", "30", \
-     "--access-logfile", "-", \
-     "autoscaler:app"]
+CMD ["python", "autoscaler.py"]

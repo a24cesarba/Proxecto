@@ -15,7 +15,9 @@ RUN { \
     echo '    Require all granted'; \
     echo '    php_flag engine Off'; \
     echo '</Directory>'; \
-    echo 'DirectoryIndex login.php'; \
+    echo '<Directory /var/www/html>' ; \
+    echo '    DirectoryIndex login.php'; \
+    echo '</Directory>'; \
 } > /etc/apache2/conf-available/almacenamento.conf \
  && a2enconf almacenamento
 

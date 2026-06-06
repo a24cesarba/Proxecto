@@ -21,17 +21,12 @@ wsrep_provider_options          = "gcache.size=256M; pc.recovery=true; evs.keepa
 binlog_format                   = ROW
 default_storage_engine          = InnoDB
 
-# innodb_autoinc_lock_mode=2 (interleaved) prevents auto-increment deadlocks
-# in multi-master writes. Required by Galera.
 innodb_autoinc_lock_mode        = 2
 
-# Reduce durability slightly for better performance; Galera's certification
-# protocol provides transaction consistency across the cluster.
 innodb_flush_log_at_trx_commit  = 0
 innodb_doublewrite              = 1
 
 # ── Memory Tuning — calibrated for 2 GB RAM nodes ────────────────────────────
-# Leave ~1 GB for OS, Galera gcache, SST buffers, and connections overhead.
 innodb_buffer_pool_size         = 1G
 innodb_log_file_size            = 256M
 innodb_log_buffer_size          = 64M
@@ -45,5 +40,4 @@ tmp_table_size                  = 64M
 max_heap_table_size             = 64M
 
 # ── Networking ────────────────────────────────────────────────────────────────
-# Bind to all interfaces so containers on the overlay network can connect.
 bind-address                    = 0.0.0.0
