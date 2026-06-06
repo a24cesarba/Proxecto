@@ -4,25 +4,29 @@ networks:
   proxy_web:
     driver: overlay
     attachable: false
-    driver_opts:
-      encrypted: "true"
+    ipam:
+      config:
+        - subnet: 172.28.1.0/24
 
   app_db:
     driver: overlay
     attachable: false
-    driver_opts:
-      encrypted: "true"
+    ipam:
+      config:
+        - subnet: 172.28.2.0/24
 
   db_net:
     driver: overlay
     attachable: false
-    driver_opts:
-      encrypted: "true"
+    ipam:
+      config:
+        - subnet: 172.28.3.0/24
       
   monitoring:
     driver: overlay
-    driver_opts:
-      encrypted: "true"
+    ipam:
+      config:
+        - subnet: 172.28.4.0/24
 
 secrets:
   db_root_password:

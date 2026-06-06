@@ -19,8 +19,7 @@ SST_PASSWORD=$(< "$SST_PWD_FILE")
 # ── Node Identity ─────────────────────────────────────────────────────────────
 NODE_NAME="${GALERA_NODE_NAME:-$(hostname)}"
 
-NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(ip -4 addr show | grep inet | grep -v '127.0.0.1' | grep -v '172.18' | awk '{print $2}' | cut -d/ -f1 | head -n 1)}"
-
+NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(hostname -i 2>/dev/null | awk '{print $1}')}"
 log "Node identity → name=${NODE_NAME}  overlay_addr=${NODE_ADDRESS}"
 
 # ── Cluster Parameters ────────────────────────────────────────────────────────
