@@ -145,8 +145,10 @@ services:
           - node.role == manager       
       resources:
         limits:
+          cpus: '1.0'
           memory: 256M
         reservations:
+          cpus: '0.25'
           memory: 192M
       restart_policy:
         condition: any
@@ -408,15 +410,6 @@ services:
       - monitoring
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      AUTOSCALE_SERVICE:    "app_web"
-      AUTOSCALE_MIN:        "3"
-      AUTOSCALE_MAX:        "9"
-      SCALE_UP_BY:          "1"
-      SCALE_DOWN_BY:        "1"
-      SCALE_UP_COOLDOWN:    "120"
-      SCALE_DOWN_COOLDOWN:  "300"
-      LOG_LEVEL:            "INFO"
     deploy:
       mode: replicated
       replicas: 1

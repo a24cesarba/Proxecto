@@ -35,7 +35,7 @@ BOOTSTRAP=false
 # ── Bootstrap / Join Decision ─────────────────────────────────────────────────
 log "Evaluating cluster state..."
 
-if [ -f "${DATADIR}/grastate.dat" ]; then
+if [ -s "${DATADIR}/grastate.dat" ]; then
 
     # ── Case 1 & 2: Existing data directory ──────────────────────────────────
     log "Found existing datadir with grastate.dat"
