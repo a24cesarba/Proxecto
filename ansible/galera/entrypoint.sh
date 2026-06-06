@@ -119,6 +119,18 @@ else
     log "Mode: JOIN       → mariadbd (normal start)"
 fi
 
-# ── Hand Off to Official MariaDB Entrypoint ───────────────────────────────────
+
+case "$NODE_NAME" in
+    db1) JOIN_DELAY=0  ;;
+    db2) JOIN_DELAY=30 ;;
+    db3) JOIN_DELAY=60 ;;
+    *)   JOIN_DELAY=0  ;;
+esac
+
+if [ "$BOOTSTRAP" = "false" ] && [ "$JOIN_DELAY" -gt 0 ]; then
+    log "Staggering join: sleeping ${JOIN_DELAY}s to avoid simultaneous joins"
+    sleep "$JOIN_DELAY"
+fi
+
 log "Handing off to docker-entrypoint.sh..."
 exec /usr/local/bin/docker-entrypoint.sh "$@" $EXTRA_FLAGS
