@@ -15,73 +15,83 @@ SST_PWD_FILE="${GALERA_SST_PASSWORD_FILE:-/run/secrets/db_galera_password}"
 
 SST_PASSWORD=$(< "$SST_PWD_FILE")
 
-
 # ── Node Identity ─────────────────────────────────────────────────────────────
 NODE_NAME="${GALERA_NODE_NAME:-$(hostname)}"
-
 NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(hostname -i 2>/dev/null | awk '{print $1}')}"
 log "Node identity → name=${NODE_NAME}  overlay_addr=${NODE_ADDRESS}"
 
 # ── Cluster Parameters ────────────────────────────────────────────────────────
 CLUSTER_NAME="${GALERA_CLUSTER_NAME:-galera_cluster}"
 CLUSTER_ADDRESS="${GALERA_CLUSTER_ADDRESS:-gcomm://app_db}"
-CLUSTER_SERVICE="${GALERA_CLUSTER_SERVICE:-app_db}"   # Swarm service DNS name
+CLUSTER_SERVICE="${GALERA_CLUSTER_SERVICE:-app_db}"
 BOOTSTRAP_NODE="${GALERA_BOOTSTRAP_NODE:-db1}"
 SST_USER="${GALERA_SST_USER:-galera_sst}"
 
 DATADIR=/var/lib/mysql
 BOOTSTRAP=false
+TREAT_AS_FRESH=false
+
+# ── Helper: wait until another cluster member is reachable on 4567 ────────────
+wait_for_cluster() {
+    local MAX_WAIT=120 WAITED=0
+    log "Probing ${CLUSTER_SERVICE}:4567 (timeout ${MAX_WAIT}s)..."
+    until nc -z "$CLUSTER_SERVICE" 4567 2>/dev/null; do
+        if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+            log "WARNING: cluster not reachable after ${MAX_WAIT}s — joining anyway (Galera will retry)"
+            return
+        fi
+        log "  not yet reachable — retrying in 5s (${WAITED}/${MAX_WAIT}s elapsed)"
+        sleep 5
+        WAITED=$((WAITED + 5))
+    done
+    log "Cluster reachable — proceeding to join"
+}
 
 # ── Bootstrap / Join Decision ─────────────────────────────────────────────────
 log "Evaluating cluster state..."
 
 if [ -s "${DATADIR}/grastate.dat" ]; then
 
-    # ── Case 1 & 2: Existing data directory ──────────────────────────────────
     log "Found existing datadir with grastate.dat"
-    if grep -q "safe_to_bootstrap: 1" "${DATADIR}/grastate.dat"; then
+
+    # Zero UUID means a stub written during a crash before ever joining — wipe it
+    WSREP_UUID=$(awk '/^uuid:/{print $2}' "${DATADIR}/grastate.dat")
+    if [ "$WSREP_UUID" = "00000000-0000-0000-0000-000000000000" ]; then
+        log "grastate.dat has zero UUID — previous init never completed, treating as fresh"
+        rm -f "${DATADIR}/grastate.dat" "${DATADIR}/galera.cache"
+        TREAT_AS_FRESH=true
+
+    elif grep -q "safe_to_bootstrap: 1" "${DATADIR}/grastate.dat"; then
         log "safe_to_bootstrap=1 → bootstrapping cluster from this node's data"
         BOOTSTRAP=true
+
     else
         log "safe_to_bootstrap=0 → joining existing cluster (IST/SST will sync state)"
         BOOTSTRAP=false
+        wait_for_cluster   # was missing: join still needs the primary to be up
     fi
 
 elif [ -z "$(ls -A "$DATADIR" 2>/dev/null)" ]; then
+    TREAT_AS_FRESH=true
 
-    # ── Case 3 & 4: Fresh / empty data directory ──────────────────────────────
-    log "Empty datadir detected — fresh deployment"
+else
+    # Datadir has content but grastate.dat is missing or empty
+    log "WARNING: datadir not empty but grastate.dat missing — wiping cache and joining (expect forced SST)"
+    rm -f "${DATADIR}/galera.cache"
+    BOOTSTRAP=false
+    wait_for_cluster   # was missing entirely in the original
+fi
 
+if [ "$TREAT_AS_FRESH" = "true" ]; then
+    log "Fresh datadir — deciding bootstrap vs join"
     if [ "$NODE_NAME" = "$BOOTSTRAP_NODE" ]; then
         log "I am the bootstrap node (${BOOTSTRAP_NODE}) → starting new cluster"
         BOOTSTRAP=true
-
     else
         log "I am NOT the bootstrap node — waiting for cluster to form..."
         BOOTSTRAP=false
-
-        MAX_WAIT=120
-        WAITED=0
-        log "Probing ${CLUSTER_SERVICE}:4567 (timeout ${MAX_WAIT}s)..."
-
-        until nc -z "$CLUSTER_SERVICE" 4567 2>/dev/null; do
-            if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-                log "WARNING: cluster not reachable after ${MAX_WAIT}s — joining anyway (Galera will retry)"
-                break
-            fi
-            log "  not yet reachable — retrying in 5s (${WAITED}/${MAX_WAIT}s elapsed)"
-            sleep 5
-            WAITED=$((WAITED + 5))
-        done
-        log "Cluster reachable — proceeding to join"
+        wait_for_cluster
     fi
-
-else
-
-    # ── Case 5: Datadir has content but no grastate.dat ───────────────────────
-    log "WARNING: datadir not empty but grastate.dat missing — joining (expect forced SST)"
-    BOOTSTRAP=false
-
 fi
 
 # ── Write Runtime Galera Config ───────────────────────────────────────────────
