@@ -44,6 +44,7 @@ wait_for_cluster() {
         sleep 5
         WAITED=$((WAITED + 5))
     done
+    sleep 10
     log "Cluster reachable — proceeding to join"
 }
 
@@ -103,7 +104,7 @@ cat > "$RUNTIME_CNF" <<EOF
 # Do not edit — this file is overwritten on every container start.
 [mysqld]
 wsrep_node_name     = ${NODE_NAME}
-wsrep_node_address  = ${NODE_ADDRESS}
+wsrep_node_address  = ${NODE_ADDRESS}:4567
 wsrep_cluster_name  = ${CLUSTER_NAME}
 wsrep_cluster_address = ${CLUSTER_ADDRESS}
 wsrep_sst_auth      = ${SST_USER}:${SST_PASSWORD}

@@ -252,7 +252,7 @@ services:
           memory: 1024M
       restart_policy:
         condition: on-failure
-        delay: 10s
+        delay: 60s
         max_attempts: 5
         window: 180s
       update_config:
