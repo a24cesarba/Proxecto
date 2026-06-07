@@ -2,22 +2,10 @@
 
 set -euo pipefail
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Logging
-# ──────────────────────────────────────────────────────────────────────────────
+log() { echo "[galera] $(date '+%H:%M:%S') $*"; }
+die() { log "FATAL: $*"; exit 1; }
 
-log() {
-    echo "[galera] $(date '+%H:%M:%S') $*"
-}
-
-die() {
-    log "FATAL: $*"
-    exit 1
-}
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Secrets
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Secrets ───────────────────────────────────────────────────────────────────
 
 ROOT_PWD_FILE="${MYSQL_ROOT_PASSWORD_FILE:-/run/secrets/db_root_password}"
 SST_PWD_FILE="${GALERA_SST_PASSWORD_FILE:-/run/secrets/db_galera_password}"
@@ -27,91 +15,41 @@ SST_PWD_FILE="${GALERA_SST_PASSWORD_FILE:-/run/secrets/db_galera_password}"
 
 SST_PASSWORD=$(< "$SST_PWD_FILE")
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Node Identity
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Node Identity ─────────────────────────────────────────────────────────────
 
 NODE_NAME="${GALERA_NODE_NAME:-$(hostname)}"
 NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(hostname -i | awk '{print $1}')}"
 
 log "Node identity → name=${NODE_NAME} address=${NODE_ADDRESS}"
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Cluster Configuration
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Cluster Configuration ─────────────────────────────────────────────────────
 
 CLUSTER_NAME="${GALERA_CLUSTER_NAME:-galera_cluster}"
-CLUSTER_ADDRESS="${GALERA_CLUSTER_ADDRESS:-gcomm://tasks.app_db}"
 BOOTSTRAP_NODE="${GALERA_BOOTSTRAP_NODE:-db1}"
 SST_USER="${GALERA_SST_USER:-galera_sst}"
-
 DATADIR="/var/lib/mysql"
-
 BOOTSTRAP=false
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Peer Discovery
-# ──────────────────────────────────────────────────────────────────────────────
-
-# Extraemos el hostname DNS del cluster address: gcomm://tasks.app_db → tasks.app_db
-CLUSTER_DNS="${CLUSTER_ADDRESS#gcomm://}"
-
-wait_for_peers() {
-    log "Waiting for peers in ${CLUSTER_DNS}..."
-    local peers=0
-    while true; do
-        peers=$(getent hosts "$CLUSTER_DNS" 2>/dev/null \
-                | awk '{print $1}' \
-                | grep -v "^${NODE_ADDRESS}$" \
-                | wc -l)
-        if [[ "$peers" -ge 1 ]]; then
-            log "Found ${peers} peer(s), proceeding."
-            break
-        fi
-        log "No peers visible yet (only myself), retrying in 3s..."
-        sleep 3
-    done
-}
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Cluster Decision
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Cluster Decision ──────────────────────────────────────────────────────────
 
 log "Evaluating cluster state..."
 
 if [[ ! -d "$DATADIR" ]] || [[ -z "$(ls -A "$DATADIR" 2>/dev/null)" ]]; then
 
     log "Fresh datadir detected"
-
-    if [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]]; then
-        log "Bootstrap node (${BOOTSTRAP_NODE}), starting primary"
-        BOOTSTRAP=true
-    else
-        log "Non-bootstrap node, waiting for primary..."
-        # La espera dinámica reemplaza el sleep 45 estático
-    fi
+    [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]] && BOOTSTRAP=true || log "Non-bootstrap node, waiting for primary..."
 
 elif [[ -s "${DATADIR}/grastate.dat" ]]; then
 
     log "Found grastate.dat"
-
     WSREP_UUID=$(awk '/^uuid:/{print $2}' "${DATADIR}/grastate.dat")
 
     if [[ "$WSREP_UUID" == "00000000-0000-0000-0000-000000000000" ]]; then
-
         log "Invalid UUID detected, cleaning Galera metadata"
-
-        rm -f \
-            "${DATADIR}/grastate.dat" \
-            "${DATADIR}/galera.cache"
-
-        if [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]]; then
-            BOOTSTRAP=true
-        fi
+        rm -f "${DATADIR}/grastate.dat" "${DATADIR}/galera.cache"
+        [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]] && BOOTSTRAP=true
 
     elif grep -q '^safe_to_bootstrap: 1' "${DATADIR}/grastate.dat"; then
-
-        # Solo hace bootstrap el nodo designado; el resto ignora la flag y hace JOIN
         if [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]]; then
             log "safe_to_bootstrap=1 on bootstrap node → BOOTSTRAP"
             BOOTSTRAP=true
@@ -120,68 +58,55 @@ elif [[ -s "${DATADIR}/grastate.dat" ]]; then
         fi
 
     else
-
         log "safe_to_bootstrap=0 → join cluster"
-
     fi
 
 else
-
     log "Datadir exists but grastate.dat missing"
-
-    rm -f "${DATADIR}/galera.cache" "${DATADIR}/gvwstate.dat" 
-
+    rm -f "${DATADIR}/galera.cache" "${DATADIR}/gvwstate.dat"
 fi
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Runtime Config
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Seed Resolution ───────────────────────────────────────────────────────────
 
 RUNTIME_CNF="/etc/mysql/mariadb.conf.d/61-galera-runtime.cnf"
 
+if [[ "$BOOTSTRAP" == "true" ]]; then
+    log "Mode: BOOTSTRAP"
+    CLUSTER_SEED="gcomm://"
+else
+    log "Resolving bootstrap node '${BOOTSTRAP_NODE}'..."
+    BOOTSTRAP_IP=""
+    while [[ -z "$BOOTSTRAP_IP" ]]; do
+        BOOTSTRAP_IP=$(getent hosts "$BOOTSTRAP_NODE" 2>/dev/null | awk '{print $1}')
+        [[ -z "$BOOTSTRAP_IP" ]] && { log "Cannot resolve ${BOOTSTRAP_NODE} yet, retrying in 2s..."; sleep 2; }
+    done
+    log "Resolved ${BOOTSTRAP_NODE} → ${BOOTSTRAP_IP}"
+
+    log "Waiting for ${BOOTSTRAP_IP}:4567..."
+    while ! timeout 2 bash -c "echo > /dev/tcp/${BOOTSTRAP_IP}/4567" 2>/dev/null; do
+        log "Port 4567 not ready, retrying in 3s..."
+        sleep 3
+    done
+    log "Port 4567 ready."
+    CLUSTER_SEED="gcomm://${BOOTSTRAP_IP}"
+fi
+
+# ── Runtime Config ────────────────────────────────────────────────────────────
+
 cat > "$RUNTIME_CNF" <<EOF
 [mysqld]
-
 wsrep_cluster_name=${CLUSTER_NAME}
-wsrep_cluster_address=${CLUSTER_ADDRESS}
-
+wsrep_cluster_address=${CLUSTER_SEED}
 wsrep_node_name=${NODE_NAME}
 wsrep_node_address=${NODE_ADDRESS}
-
 wsrep_sst_auth=${SST_USER}:${SST_PASSWORD}
 EOF
 
-log "Cluster address: ${CLUSTER_ADDRESS}"
+log "Cluster address: ${CLUSTER_SEED}"
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Startup Mode
-# ──────────────────────────────────────────────────────────────────────────────
-
-EXTRA_ARGS=()
-
-if [[ "$BOOTSTRAP" == "true" ]]; then
-    log "Mode: BOOTSTRAP"
-    EXTRA_ARGS+=(--wsrep-new-cluster)
-else
-    log "Mode: JOIN"
-    wait_for_peers
-fi
-
-### temporal para 
-if [[ "$BOOTSTRAP" == "false" ]]; then
-    log "Mode: JOIN"
-    wait_for_peers
-    log "Waiting 15s for overlay FDB propagation..."
-    sleep 15
-fi
-###
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Hand Off
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Hand Off ──────────────────────────────────────────────────────────────────
 
 log "Starting MariaDB..."
-
-exec /usr/local/bin/docker-entrypoint.sh \
-    "$@" \
-    "${EXTRA_ARGS[@]}"
+[[ "$BOOTSTRAP" == "true" ]] \
+    && exec /usr/local/bin/docker-entrypoint.sh "$@" --wsrep-new-cluster \
+    || exec /usr/local/bin/docker-entrypoint.sh "$@"
