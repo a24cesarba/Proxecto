@@ -2,135 +2,148 @@
 
 set -euo pipefail
 
-# ── Logging ───────────────────────────────────────────────────────────────────
-log() { echo "[galera] $(date '+%H:%M:%S') $*"; }
-die() { log "FATAL: $*"; exit 1; }
+# ──────────────────────────────────────────────────────────────────────────────
+# Logging
+# ──────────────────────────────────────────────────────────────────────────────
 
-# ── Secrets ───────────────────────────────────────────────────────────────────
+log() {
+    echo "[galera] $(date '+%H:%M:%S') $*"
+}
+
+die() {
+    log "FATAL: $*"
+    exit 1
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Secrets
+# ──────────────────────────────────────────────────────────────────────────────
+
 ROOT_PWD_FILE="${MYSQL_ROOT_PASSWORD_FILE:-/run/secrets/db_root_password}"
 SST_PWD_FILE="${GALERA_SST_PASSWORD_FILE:-/run/secrets/db_galera_password}"
 
-[ -f "$ROOT_PWD_FILE" ] || die "Root password secret not found: $ROOT_PWD_FILE"
-[ -f "$SST_PWD_FILE"  ] || die "SST password secret not found: $SST_PWD_FILE"
+[[ -f "$ROOT_PWD_FILE" ]] || die "Root password secret not found: $ROOT_PWD_FILE"
+[[ -f "$SST_PWD_FILE"  ]] || die "SST password secret not found: $SST_PWD_FILE"
 
 SST_PASSWORD=$(< "$SST_PWD_FILE")
 
-# ── Node Identity ─────────────────────────────────────────────────────────────
-NODE_NAME="${GALERA_NODE_NAME:-$(hostname)}"
-NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(hostname -i 2>/dev/null | awk '{print $1}')}"
-log "Node identity → name=${NODE_NAME}  overlay_addr=${NODE_ADDRESS}"
+# ──────────────────────────────────────────────────────────────────────────────
+# Node Identity
+# ──────────────────────────────────────────────────────────────────────────────
 
-# ── Cluster Parameters ────────────────────────────────────────────────────────
+NODE_NAME="${GALERA_NODE_NAME:-$(hostname)}"
+NODE_ADDRESS="${GALERA_NODE_ADDRESS:-$(hostname -i | awk '{print $1}')}"
+
+log "Node identity → name=${NODE_NAME} address=${NODE_ADDRESS}"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cluster Configuration
+# ──────────────────────────────────────────────────────────────────────────────
+
 CLUSTER_NAME="${GALERA_CLUSTER_NAME:-galera_cluster}"
-CLUSTER_ADDRESS="${GALERA_CLUSTER_ADDRESS:-gcomm://app_db}"
-CLUSTER_SERVICE="${GALERA_CLUSTER_SERVICE:-app_db}"
+CLUSTER_ADDRESS="${GALERA_CLUSTER_ADDRESS:-gcomm://tasks.app_db}"
 BOOTSTRAP_NODE="${GALERA_BOOTSTRAP_NODE:-db1}"
 SST_USER="${GALERA_SST_USER:-galera_sst}"
 
-DATADIR=/var/lib/mysql
+DATADIR="/var/lib/mysql"
+
 BOOTSTRAP=false
-TREAT_AS_FRESH=false
 
-# ── Helper: wait until another cluster member is reachable on 4567 ────────────
-wait_for_cluster() {
-    local MAX_WAIT=120 WAITED=0
-    log "Probing ${CLUSTER_SERVICE}:4567 (timeout ${MAX_WAIT}s)..."
-    until nc -z "$CLUSTER_SERVICE" 4567 2>/dev/null; do
-        if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-            log "WARNING: cluster not reachable after ${MAX_WAIT}s — joining anyway (Galera will retry)"
-            return
-        fi
-        log "  not yet reachable — retrying in 5s (${WAITED}/${MAX_WAIT}s elapsed)"
-        sleep 5
-        WAITED=$((WAITED + 5))
-    done
-    sleep 10
-    log "Cluster reachable — proceeding to join"
-}
+# ──────────────────────────────────────────────────────────────────────────────
+# Cluster Decision
+# ──────────────────────────────────────────────────────────────────────────────
 
-# ── Bootstrap / Join Decision ─────────────────────────────────────────────────
 log "Evaluating cluster state..."
 
-if [ -s "${DATADIR}/grastate.dat" ]; then
+if [[ ! -d "$DATADIR" ]] || [[ -z "$(ls -A "$DATADIR" 2>/dev/null)" ]]; then
 
-    log "Found existing datadir with grastate.dat"
+    log "Fresh datadir detected"
 
-    # Zero UUID means a stub written during a crash before ever joining — wipe it
+    if [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]]; then
+        log "Bootstrap node (${BOOTSTRAP_NODE})"
+        BOOTSTRAP=true
+    else
+        log "Non-bootstrap node, waiting 45s for primary to form..."
+        sleep 45
+    fi
+
+elif [[ -s "${DATADIR}/grastate.dat" ]]; then
+
+    log "Found grastate.dat"
+
     WSREP_UUID=$(awk '/^uuid:/{print $2}' "${DATADIR}/grastate.dat")
-    if [ "$WSREP_UUID" = "00000000-0000-0000-0000-000000000000" ]; then
-        log "grastate.dat has zero UUID — previous init never completed, treating as fresh"
-        rm -f "${DATADIR}/grastate.dat" "${DATADIR}/galera.cache"
-        TREAT_AS_FRESH=true
 
-    elif grep -q "safe_to_bootstrap: 1" "${DATADIR}/grastate.dat"; then
-        log "safe_to_bootstrap=1 → bootstrapping cluster from this node's data"
+    if [[ "$WSREP_UUID" == "00000000-0000-0000-0000-000000000000" ]]; then
+
+        log "Invalid UUID detected, cleaning Galera metadata"
+
+        rm -f \
+            "${DATADIR}/grastate.dat" \
+            "${DATADIR}/galera.cache"
+
+        if [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]]; then
+            BOOTSTRAP=true
+        fi
+
+    elif grep -q '^safe_to_bootstrap: 1' "${DATADIR}/grastate.dat"; then
+
+        log "safe_to_bootstrap=1"
+
         BOOTSTRAP=true
 
     else
-        log "safe_to_bootstrap=0 → joining existing cluster (IST/SST will sync state)"
-        BOOTSTRAP=false
-        wait_for_cluster   # was missing: join still needs the primary to be up
-    fi
 
-elif [ -z "$(ls -A "$DATADIR" 2>/dev/null)" ]; then
-    TREAT_AS_FRESH=true
+        log "safe_to_bootstrap=0 → join cluster"
+
+    fi
 
 else
-    # Datadir has content but grastate.dat is missing or empty
-    log "WARNING: datadir not empty but grastate.dat missing — wiping cache and joining (expect forced SST)"
+
+    log "Datadir exists but grastate.dat missing"
+
     rm -f "${DATADIR}/galera.cache"
-    BOOTSTRAP=false
-    wait_for_cluster   # was missing entirely in the original
+
 fi
 
-if [ "$TREAT_AS_FRESH" = "true" ]; then
-    log "Fresh datadir — deciding bootstrap vs join"
-    if [ "$NODE_NAME" = "$BOOTSTRAP_NODE" ]; then
-        log "I am the bootstrap node (${BOOTSTRAP_NODE}) → starting new cluster"
-        BOOTSTRAP=true
-    else
-        log "I am NOT the bootstrap node — waiting for cluster to form..."
-        BOOTSTRAP=false
-        wait_for_cluster
-    fi
-fi
+# ──────────────────────────────────────────────────────────────────────────────
+# Runtime Config
+# ──────────────────────────────────────────────────────────────────────────────
 
-# ── Write Runtime Galera Config ───────────────────────────────────────────────
-RUNTIME_CNF=/etc/mysql/mariadb.conf.d/61-galera-runtime.cnf
+RUNTIME_CNF="/etc/mysql/mariadb.conf.d/61-galera-runtime.cnf"
 
-log "Writing runtime config → ${RUNTIME_CNF}"
 cat > "$RUNTIME_CNF" <<EOF
-# Auto-generated by galera-entrypoint.sh on $(date -u '+%Y-%m-%dT%H:%M:%SZ')
-# Do not edit — this file is overwritten on every container start.
 [mysqld]
-wsrep_node_name     = ${NODE_NAME}
-wsrep_node_address  = ${NODE_ADDRESS}:4567
-wsrep_cluster_name  = ${CLUSTER_NAME}
-wsrep_cluster_address = ${CLUSTER_ADDRESS}
-wsrep_sst_auth      = ${SST_USER}:${SST_PASSWORD}
+
+wsrep_cluster_name=${CLUSTER_NAME}
+wsrep_cluster_address=${CLUSTER_ADDRESS}
+
+wsrep_node_name=${NODE_NAME}
+wsrep_node_address=${NODE_ADDRESS}
+
+wsrep_sst_auth=${SST_USER}:${SST_PASSWORD}
 EOF
 
-# ── Build Extra Flags ─────────────────────────────────────────────────────────
-EXTRA_FLAGS=""
-if [ "$BOOTSTRAP" = "true" ]; then
-    EXTRA_FLAGS="--wsrep-new-cluster"
-    log "Mode: BOOTSTRAP → mariadbd --wsrep-new-cluster"
+log "Cluster address: ${CLUSTER_ADDRESS}"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Startup Mode
+# ──────────────────────────────────────────────────────────────────────────────
+
+EXTRA_ARGS=()
+
+if [[ "$BOOTSTRAP" == "true" ]]; then
+    log "Mode: BOOTSTRAP"
+    EXTRA_ARGS+=(--wsrep-new-cluster)
 else
-    log "Mode: JOIN       → mariadbd (normal start)"
+    log "Mode: JOIN"
 fi
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Hand Off
+# ──────────────────────────────────────────────────────────────────────────────
 
-case "$NODE_NAME" in
-    db1) JOIN_DELAY=0  ;;
-    db2) JOIN_DELAY=30 ;;
-    db3) JOIN_DELAY=60 ;;
-    *)   JOIN_DELAY=0  ;;
-esac
+log "Starting MariaDB..."
 
-if [ "$BOOTSTRAP" = "false" ] && [ "$JOIN_DELAY" -gt 0 ]; then
-    log "Staggering join: sleeping ${JOIN_DELAY}s to avoid simultaneous joins"
-    sleep "$JOIN_DELAY"
-fi
-
-log "Handing off to docker-entrypoint.sh..."
-exec /usr/local/bin/docker-entrypoint.sh "$@" $EXTRA_FLAGS
+exec /usr/local/bin/docker-entrypoint.sh \
+    "$@" \
+    "${EXTRA_ARGS[@]}"
