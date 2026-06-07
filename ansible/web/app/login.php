@@ -6,8 +6,6 @@ if (isset($_GET["erro"])) {
         echo "<script>alert('Nome de usuario incorrecto');</script>";
     } elseif ($_GET['erro'] == 2) {
         echo "<script>alert('Contrasinal incorrecto');</script>";
-    } elseif ($_GET['erro'] == 0) {
-        echo "<script>alert('Inicio de sesión non válido');</script>";
     }
 }
 ?>

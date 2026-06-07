@@ -175,7 +175,7 @@
         chain: INPUT
         protocol: tcp
         destination_port: "24007"
-        source: 10.0.0.11/32
+        source: 10.100.0.11/32
         jump: ACCEPT
         comment: gluster-glusterd-web1
 
@@ -184,7 +184,7 @@
         chain: INPUT
         protocol: tcp
         destination_port: "24007"
-        source: 10.0.0.12/32
+        source: 10.100.0.12/32
         jump: ACCEPT
         comment: gluster-glusterd-web2
 
@@ -193,7 +193,7 @@
         chain: INPUT
         protocol: tcp
         destination_port: "24007"
-        source: 10.0.0.13/32
+        source: 10.100.0.13/32
         jump: ACCEPT
         comment: gluster-glusterd-web3
 
@@ -202,7 +202,7 @@
         chain: INPUT
         protocol: tcp
         destination_port: "49152:49160"
-        source: 10.0.0.11/32
+        source: 10.100.0.11/32
         jump: ACCEPT
         comment: gluster-brick-web1
 
@@ -220,7 +220,7 @@
         chain: INPUT
         protocol: tcp
         destination_port: "49152:49160"
-        source: 10.0.0.13/32
+        source: 10.100.0.13/32
         jump: ACCEPT
         comment: gluster-brick-web3
 
@@ -258,7 +258,6 @@
         limit: "5/sec"
         jump: ACCEPT
         comment: "icmp-public"
-
 
 # # ─────────────────────────────────────────────────────────────────────────────
 # # PLAY 5 — Reglas OUTPUT (todos los nodos) + NFLOG+DROP al final
@@ -375,9 +374,8 @@
 #         jump: DROP
 #         comment: output-default-drop
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# PLAY 6 — Reglas FORWARD (todos los nodos) + NFLOG+DROP al final
+# PLAY 5 — Reglas FORWARD (todos los nodos) + NFLOG+DROP al final
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Reglas FORWARD (todos los nodos) + NFLOG+DROP al final
   hosts: all
@@ -436,7 +434,7 @@
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PLAY 7 — Reglas DOCKER-USER (todos los nodos) + NFLOG+DROP al final
+# PLAY 6 — Reglas DOCKER-USER (todos los nodos) + NFLOG+DROP al final
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Reglas DOCKER-USER (allowlist con DROP final)
   hosts: all
@@ -517,8 +515,7 @@
       failed_when: false
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PLAY 8 — Cerrar INPUT con NFLOG+DROP, persistir y verificar
-# Se ejecuta AL FINAL para que todos los ACCEPT de INPUT estén en su sitio.
+# PLAY 7 — Cerrar INPUT con NFLOG+DROP, persistir y verificar
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Cerrar INPUT con NFLOG+DROP, persistir y verificar (todos los nodos)
   hosts: all

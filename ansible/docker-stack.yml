@@ -124,14 +124,7 @@ services:
       - proxy_web 
       - app_db 
     secrets:
-      - db_app_password  
-    environment:
-      # Conexión a MariaDB Galera a través de HAProxy
-      DB_HOST: "lb"
-      DB_PORT: "3306"
-      DB_NAME: "app"
-      DB_USER: "app"
-      UPLOAD_DIR: "/app/almacenamiento"
+      - db_app_password
     volumes:
       - type: bind
         source: /mnt/almacenamiento_compartido/
@@ -233,8 +226,6 @@ services:
       APP_DB_NAME:                app                           
       APP_DB_USER:                app                            
       GALERA_CLUSTER_NAME:        galera_cluster
-      GALERA_CLUSTER_ADDRESS:     gcomm://tasks.app_db
-      # GALERA_CLUSTER_SERVICE:     app_db
       GALERA_BOOTSTRAP_NODE:      db1
       GALERA_SST_USER:            galera_sst
     volumes:
@@ -280,7 +271,6 @@ services:
       TASKS:      1     
       NETWORKS:   1     
       NODES:      1     
-      CONTAINERS: 1
 
     deploy:
       mode: replicated

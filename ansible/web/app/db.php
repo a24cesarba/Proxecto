@@ -3,10 +3,10 @@ function getDbConnection(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
 
-    $host = getenv('DB_HOST') ?: 'lb';
-    $port = getenv('DB_PORT') ?: '3306';
-    $name = getenv('DB_NAME') ?: 'app';
-    $user = getenv('DB_USER') ?: 'app';
+    $host = 'lb';
+    $port = '3306';
+    $name = 'app';
+    $user = 'app';
     $pass = trim(@file_get_contents('/run/secrets/db_app_password') ?: '');
 
     $maxAttempts = 3;
