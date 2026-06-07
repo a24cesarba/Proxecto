@@ -129,7 +129,7 @@ else
 
     log "Datadir exists but grastate.dat missing"
 
-    rm -f "${DATADIR}/galera.cache"
+    rm -f "${DATADIR}/galera.cache" "${DATADIR}/gvwstate.dat" 
 
 fi
 
@@ -166,6 +166,15 @@ else
     log "Mode: JOIN"
     wait_for_peers
 fi
+
+### temporal para 
+if [[ "$BOOTSTRAP" == "false" ]]; then
+    log "Mode: JOIN"
+    wait_for_peers
+    log "Waiting 15s for overlay FDB propagation..."
+    sleep 15
+fi
+###
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Hand Off
