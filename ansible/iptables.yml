@@ -259,123 +259,179 @@
         jump: ACCEPT
         comment: "icmp-public"
 
-# # ─────────────────────────────────────────────────────────────────────────────
-# # PLAY 5 — Reglas OUTPUT (todos los nodos) + NFLOG+DROP al final
-# # ─────────────────────────────────────────────────────────────────────────────
-# - name: Reglas OUTPUT (todos los nodos) + NFLOG+DROP al final
-#   hosts: all
-#   become: yes
-#   tasks:
+ # ─────────────────────────────────────────────────────────────────────────────
+ # PLAY 5 — Reglas OUTPUT (todos los nodos)
+ # ─────────────────────────────────────────────────────────────────────────────
+- name: Reglas OUTPUT base (todos los nodos)
+  hosts: all
+  become: yes
+  tasks:
 
-#     - name: OUTPUT ACCEPT — loopback
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         out_interface: lo
-#         jump: ACCEPT
-#         comment: out-loopback
+    - name: OUTPUT ACCEPT — loopback
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: lo
+        jump: ACCEPT
+        comment: out-loopback
 
-#     - name: OUTPUT ACCEPT — ESTABLISHED y RELATED
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         ctstate:
-#           - ESTABLISHED
-#           - RELATED
-#         jump: ACCEPT
-#         comment: out-established-related
+    - name: OUTPUT ACCEPT — ESTABLISHED y RELATED
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        ctstate:
+          - ESTABLISHED
+          - RELATED
+        jump: ACCEPT
+        comment: out-established-related
 
-#     - name: OUTPUT ACCEPT — ICMP echo-request (10/s)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         protocol: icmp
-#         icmp_type: echo-request
-#         match: limit
-#         limit: 10/sec
-#         jump: ACCEPT
-#         comment: out-icmp
+    - name: OUTPUT ACCEPT — ICMP echo-request (10/s)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: icmp
+        icmp_type: echo-request
+        match: limit
+        limit: 10/sec
+        jump: ACCEPT
+        comment: out-icmp
 
-#     - name: OUTPUT ACCEPT — todo tráfico a red de gestión Swarm (10.0.0.0/24)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         destination: 10.0.0.0/24
-#         jump: ACCEPT
-#         comment: out-mgmt-net
+    - name: OUTPUT ACCEPT — DNS UDP 53
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: udp
+        destination_port: "53"
+        jump: ACCEPT
+        comment: out-dns-udp
 
-#     - name: OUTPUT ACCEPT — todo tráfico a red de datos Swarm (10.10.0.0/24)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         destination: 10.10.0.0/24
-#         jump: ACCEPT
-#         comment: out-data-net
+    - name: OUTPUT ACCEPT — DNS TCP 53
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: tcp
+        destination_port: "53"
+        jump: ACCEPT
+        comment: out-dns-tcp
 
-#     - name: OUTPUT ACCEPT — todo tráfico a NAT Vagrant (10.0.2.0/24)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         destination: 10.0.2.0/24
-#         jump: ACCEPT
-#         comment: out-vagrant-nat
+    - name: OUTPUT ACCEPT — NTP UDP 123
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: udp
+        destination_port: "123"
+        jump: ACCEPT
+        comment: out-ntp
 
-#     - name: OUTPUT ACCEPT — todo tráfico a redes Docker locales (172.16.0.0/12)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         destination: 172.16.0.0/12
-#         jump: ACCEPT
-#         comment: out-docker-nets
+    - name: OUTPUT ACCEPT — HTTP 80 (apt, Docker Hub)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: tcp
+        destination_port: "80"
+        jump: ACCEPT
+        comment: out-http
 
-#     - name: OUTPUT ACCEPT — DNS UDP 53 (resolución externa)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         protocol: udp
-#         destination_port: "53"
-#         jump: ACCEPT
-#         comment: out-dns-udp
+    - name: OUTPUT ACCEPT — HTTPS 443 (apt, Docker Hub, docker push)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: tcp
+        destination_port: "443"
+        jump: ACCEPT
+        comment: out-https
 
-#     - name: OUTPUT ACCEPT — DNS TCP 53 (resolución externa)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         protocol: tcp
-#         destination_port: "53"
-#         jump: ACCEPT
-#         comment: out-dns-tcp
+    - name: OUTPUT ACCEPT — Swarm gossip TCP 7946 → red de gestión
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: tcp
+        destination_port: "7946"
+        destination: 10.0.0.0/24
+        jump: ACCEPT
+        comment: out-swarm-gossip-tcp
 
-#     - name: OUTPUT ACCEPT — NTP UDP 123 (sincronización de tiempo)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         protocol: udp
-#         destination_port: "123"
-#         jump: ACCEPT
-#         comment: out-ntp
+    - name: OUTPUT ACCEPT — Swarm gossip UDP 7946 → red de gestión
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: udp
+        destination_port: "7946"
+        destination: 10.0.0.0/24
+        jump: ACCEPT
+        comment: out-swarm-gossip-udp
 
-#     - name: OUTPUT ACCEPT — HTTP 80 (apt, Docker Hub)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         protocol: tcp
-#         destination_port: "80"
-#         jump: ACCEPT
-#         comment: out-http
+    - name: OUTPUT ACCEPT — Swarm raft/join TCP 2377 → red de gestión
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: tcp
+        destination_port: "2377"
+        destination: 10.0.0.0/24
+        jump: ACCEPT
+        comment: out-swarm-raft
 
-#     - name: OUTPUT ACCEPT — HTTPS 443 (apt, Docker Hub)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         protocol: tcp
-#         destination_port: "443"
-#         jump: ACCEPT
-#         comment: out-https
+    - name: OUTPUT ACCEPT — VXLAN overlay UDP 4789 → red de datos
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: udp
+        destination_port: "4789"
+        destination: 10.10.0.0/24
+        jump: ACCEPT
+        comment: out-vxlan-overlay
 
-#     - name: OUTPUT NFLOG — tráfico no permitido (group 2)
-#       ansible.builtin.command: >
-#         iptables -A OUTPUT
-#           -m comment --comment "output-nflog-drop"
-#           -j NFLOG --nflog-group 2 --nflog-prefix "OUTPUT-DROP: " --nflog-threshold 1
-#       changed_when: true
+    - name: OUTPUT ACCEPT — redes Docker locales y overlay (172.16.0.0/12)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        destination: 172.16.0.0/12
+        jump: ACCEPT
+        comment: out-docker-nets
 
-#     - name: OUTPUT DROP — tráfico no permitido (catch-all)
-#       ansible.builtin.iptables:
-#         chain: OUTPUT
-#         jump: DROP
-#         comment: output-default-drop
+    - name: OUTPUT ACCEPT — NAT Vagrant eth0 (10.0.2.0/24)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        destination: 10.0.2.0/24
+        jump: ACCEPT
+        comment: out-vagrant-nat
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PLAY 5 — Reglas FORWARD (todos los nodos) + NFLOG+DROP al final
+# PLAY 6 — Reglas OUTPUT adicionales para GlusterFS
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Reglas OUTPUT adicionales para GlusterFS
+  hosts: managers
+  become: yes
+  tasks:
+
+    - name: OUTPUT ACCEPT — GlusterFS glusterd TCP 24007 → red gluster
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: tcp
+        destination_port: "24007"
+        destination: 10.100.0.0/24
+        jump: ACCEPT
+        comment: out-gluster-glusterd
+
+    - name: OUTPUT ACCEPT — GlusterFS bricks TCP 49152:49160 → red gluster
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        protocol: tcp
+        destination_port: "49152:49160"
+        destination: 10.100.0.0/24
+        jump: ACCEPT
+        comment: out-gluster-bricks
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAY 7 — Cerrar OUTPUT con NFLOG+DROP (todos los nodos)
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Cerrar OUTPUT con NFLOG+DROP (todos los nodos)
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: OUTPUT NFLOG — tráfico no permitido (group 2)
+      ansible.builtin.command: >
+        iptables -A OUTPUT
+          -m comment --comment "output-nflog-drop"
+          -j NFLOG --nflog-group 2 --nflog-prefix "OUTPUT-DROP: " --nflog-threshold 1
+      changed_when: true
+
+    - name: OUTPUT DROP — tráfico no permitido (catch-all)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        jump: DROP
+        comment: output-default-drop
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAY 8 — Reglas FORWARD (todos los nodos)
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Reglas FORWARD (todos los nodos) + NFLOG+DROP al final
   hosts: all
@@ -419,22 +475,8 @@
         jump: ACCEPT
         comment: fwd-internal-dst
 
-    - name: FORWARD NFLOG — tráfico no permitido (group 3)
-      ansible.builtin.command: >
-        iptables -A FORWARD
-          -m comment --comment "forward-nflog-drop"
-          -j NFLOG --nflog-group 3 --nflog-prefix "FORWARD-DROP: " --nflog-threshold 1
-      changed_when: true
-
-    - name: FORWARD DROP — tráfico no permitido (catch-all)
-      ansible.builtin.iptables:
-        chain: FORWARD
-        jump: DROP
-        comment: forward-default-drop
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# PLAY 6 — Reglas DOCKER-USER (todos los nodos) + NFLOG+DROP al final
+# PLAY 9 — Reglas DOCKER-USER (todos los nodos) + NFLOG+DROP al final
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Reglas DOCKER-USER (allowlist con DROP final)
   hosts: all
@@ -507,6 +549,14 @@
       changed_when: true
       failed_when: false
 
+    - name: DOCKER-USER NFLOG — tráfico no permitido
+      ansible.builtin.command: >
+        iptables -A DOCKER-USER
+          -m comment --comment "docker-user-nflog-drop"
+          -j NFLOG --nflog-group 4 --nflog-prefix "DOCKER-USER-DROP: " --nflog-threshold 1
+      changed_when: true
+      failed_when: false
+
     - name: DOCKER-USER DROP todo lo demás
       ansible.builtin.command: >
         iptables -A DOCKER-USER
@@ -515,7 +565,7 @@
       failed_when: false
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PLAY 7 — Cerrar INPUT con NFLOG+DROP, persistir y verificar
+# PLAY 10 — Cerrar INPUT con NFLOG+DROP, persistir y verificar
 # ─────────────────────────────────────────────────────────────────────────────
 - name: Cerrar INPUT con NFLOG+DROP, persistir y verificar (todos los nodos)
   hosts: all

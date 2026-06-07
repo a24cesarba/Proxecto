@@ -8,7 +8,7 @@ groups:
       # ── Scale UP ───────────────────────────────────────────────────────────
       - alert: WebHighCpu
         expr: |
-          avg(
+          max(
             rate(
               container_cpu_usage_seconds_total{
                 container_label_com_docker_swarm_service_name="app_web",
