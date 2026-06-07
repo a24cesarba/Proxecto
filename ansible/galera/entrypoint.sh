@@ -50,6 +50,30 @@ DATADIR="/var/lib/mysql"
 BOOTSTRAP=false
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Peer Discovery
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Extraemos el hostname DNS del cluster address: gcomm://tasks.app_db → tasks.app_db
+CLUSTER_DNS="${CLUSTER_ADDRESS#gcomm://}"
+
+wait_for_peers() {
+    log "Waiting for peers in ${CLUSTER_DNS}..."
+    local peers=0
+    while true; do
+        peers=$(getent hosts "$CLUSTER_DNS" 2>/dev/null \
+                | awk '{print $1}' \
+                | grep -v "^${NODE_ADDRESS}$" \
+                | wc -l)
+        if [[ "$peers" -ge 1 ]]; then
+            log "Found ${peers} peer(s), proceeding."
+            break
+        fi
+        log "No peers visible yet (only myself), retrying in 3s..."
+        sleep 3
+    done
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Cluster Decision
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -60,11 +84,11 @@ if [[ ! -d "$DATADIR" ]] || [[ -z "$(ls -A "$DATADIR" 2>/dev/null)" ]]; then
     log "Fresh datadir detected"
 
     if [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]]; then
-        log "Bootstrap node (${BOOTSTRAP_NODE})"
+        log "Bootstrap node (${BOOTSTRAP_NODE}), starting primary"
         BOOTSTRAP=true
     else
-        log "Non-bootstrap node, waiting 45s for primary to form..."
-        sleep 45
+        log "Non-bootstrap node, waiting for primary..."
+        # La espera dinámica reemplaza el sleep 45 estático
     fi
 
 elif [[ -s "${DATADIR}/grastate.dat" ]]; then
@@ -87,9 +111,13 @@ elif [[ -s "${DATADIR}/grastate.dat" ]]; then
 
     elif grep -q '^safe_to_bootstrap: 1' "${DATADIR}/grastate.dat"; then
 
-        log "safe_to_bootstrap=1"
-
-        BOOTSTRAP=true
+        # Solo hace bootstrap el nodo designado; el resto ignora la flag y hace JOIN
+        if [[ "$NODE_NAME" == "$BOOTSTRAP_NODE" ]]; then
+            log "safe_to_bootstrap=1 on bootstrap node → BOOTSTRAP"
+            BOOTSTRAP=true
+        else
+            log "safe_to_bootstrap=1 but not the bootstrap node → JOIN"
+        fi
 
     else
 
@@ -136,6 +164,7 @@ if [[ "$BOOTSTRAP" == "true" ]]; then
     EXTRA_ARGS+=(--wsrep-new-cluster)
 else
     log "Mode: JOIN"
+    wait_for_peers
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
