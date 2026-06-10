@@ -4,7 +4,7 @@
   become: yes
   vars:
     swarm_leader_ip: "10.0.0.11"
-    swarm_leader_data_ip: "10.10.0.11"   # fix: antes 'swarm_data_leader_ip' (typo)
+    swarm_leader_data_ip: "10.10.0.11"
     leader_hostname: "web1"
     mgmt_ip: "{{ ansible_facts['eth1']['ipv4']['address'] }}"
     data_ip: "{{ ansible_facts['eth2']['ipv4']['address'] }}"

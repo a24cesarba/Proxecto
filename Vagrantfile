@@ -9,8 +9,6 @@ Vagrant.configure("2") do |config|
 
   # =========================================================
   # TRAEFIK (2 Máquinas: reverse proxy HTTP — Swarm Workers)
-  # Reciben tráfico HTTP/HTTPS (192.168.56.2x).
-  # Acceden a la Docker API del manager via TCP+mTLS (10.0.0.11:2376).
   # =========================================================
   (1..2).each do |i|
     config.vm.define "traefik#{i}" do |tr|

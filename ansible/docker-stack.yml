@@ -35,12 +35,6 @@ secrets:
     external: true
   db_app_password:
     external: true
-  docker_client_ca:
-    external: true
-  docker_client_cert:
-    external: true
-  docker_client_key:
-    external: true
   db_superuser_hash:
     external: true
 
@@ -89,10 +83,6 @@ services:
       - source: traefik_cfg
         target: /etc/traefik/traefik.yml
         mode: 0444
-    secrets:
-      - docker_client_ca
-      - docker_client_cert
-      - docker_client_key
     deploy:
       mode: replicated
       replicas: 2
@@ -166,12 +156,6 @@ services:
         - "traefik.http.services.web.loadbalancer.healthcheck.path=/healthz.php"
         - "traefik.http.services.web.loadbalancer.healthcheck.interval=10s"
         - "traefik.http.services.web.loadbalancer.healthcheck.timeout=3s"
-    # healthcheck:
-    #   test: ["CMD", "curl", "-f", "http://localhost/"]
-    #   interval: 15s
-    #   timeout: 5s
-    #   retries: 3
-    #   start_period: 20s
 
   # ── HAProxy (balanceador MySQL L4) ────────────────────────────────────────
   lb:
